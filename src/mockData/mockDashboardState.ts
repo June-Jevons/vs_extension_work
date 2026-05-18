@@ -377,6 +377,11 @@ export function createMockDashboardState(
       graphNodeCount: snapshot.featureBlocks.length,
       graphEdgeCount: snapshot.dependencies.length,
       unmappedModuleCount: snapshot.modules.filter((moduleNode) => moduleNode.featureId === "unmapped-unknown").length,
+      unclassifiedModulePaths: snapshot.modules
+        .filter((moduleNode) => moduleNode.featureId === "unmapped-unknown")
+        .map((moduleNode) => moduleNode.path)
+        .slice(0, 12),
+      unclassifiedReasonCounts: [],
       testModuleCount: snapshot.modules.filter((moduleNode) => moduleNode.isTest).length,
       runtimeModuleCount: snapshot.modules.filter((moduleNode) => !moduleNode.isTest).length,
       parsedImportStatementCount: snapshot.dependencies.length,

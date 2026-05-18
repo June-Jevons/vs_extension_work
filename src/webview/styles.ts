@@ -34,6 +34,7 @@ body {
   color: var(--lam-text);
   font-family: var(--vscode-font-family, "Segoe UI", Arial, sans-serif);
   font-size: 13px;
+  user-select: text;
 }
 
 button,
@@ -49,6 +50,7 @@ select {
     radial-gradient(circle at 15% 18%, rgba(88, 166, 255, 0.06), transparent 30%),
     linear-gradient(135deg, #0d1117 0%, #111820 52%, #0b1016 100%);
   color: var(--lam-text);
+  user-select: text;
 }
 
 .dashboard-shell {
@@ -61,8 +63,8 @@ select {
 
 .dashboard-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
-  align-items: center;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.6fr);
+  align-items: start;
   gap: 12px;
   min-width: 0;
   padding: 8px 10px;
@@ -88,6 +90,32 @@ select {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.toolbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.control-group {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid rgba(59, 70, 84, 0.72);
+}
+
+.control-group:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.control-group-label {
+  color: var(--lam-muted);
+  font-size: 11px;
 }
 
 .toolbar-actions,
@@ -128,6 +156,7 @@ select {
 .icon-button,
 .primary-action {
   cursor: pointer;
+  user-select: none;
 }
 
 .toolbar-button:hover,
@@ -173,11 +202,7 @@ select {
 }
 
 .diagnostics-panel {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
   min-width: 0;
-  padding: 8px 10px;
   border: 1px solid var(--lam-line);
   border-radius: 6px;
   background: rgba(13, 18, 25, 0.86);
@@ -185,7 +210,31 @@ select {
   box-shadow: var(--lam-shadow);
 }
 
-.diagnostics-panel span {
+.diagnostics-panel summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.diagnostics-summary-title {
+  color: var(--lam-text);
+  font-weight: 650;
+}
+
+.diagnostics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.diagnostics-panel span,
+.diagnostics-grid span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -246,9 +295,9 @@ select {
 
 .live-grid {
   display: grid;
-  grid-template-rows: auto minmax(310px, 1fr) minmax(210px, 0.76fr) auto;
+  grid-template-rows: auto auto minmax(230px, auto) auto;
   gap: 10px;
-  min-height: calc(100vh - 76px);
+  min-height: calc(100vh - 118px);
 }
 
 .current-change-grid {
@@ -366,7 +415,11 @@ select {
 }
 
 .large-graph-panel {
-  min-height: 310px;
+  min-height: 230px;
+}
+
+.compact-graph-panel {
+  min-height: 210px;
 }
 
 .lower-split {
@@ -379,6 +432,10 @@ select {
 .table-wrap {
   min-width: 0;
   overflow: auto;
+}
+
+.changed-files-scroll {
+  max-height: 260px;
 }
 
 .data-table {
@@ -480,6 +537,10 @@ select {
   overflow: hidden;
 }
 
+.graph-stage.compact {
+  min-height: 190px;
+}
+
 .graph-empty-state,
 .graph-summary {
   position: absolute;
@@ -499,9 +560,31 @@ select {
 }
 
 .graph-summary {
-  bottom: 10px;
+  top: 10px;
   font-size: 12px;
   text-align: right;
+}
+
+.graph-detail-list {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 56px;
+  overflow: auto;
+  color: var(--lam-muted);
+  font-size: 11px;
+  pointer-events: auto;
+}
+
+.graph-detail-list span {
+  padding: 2px 6px;
+  border: 1px solid rgba(59, 70, 84, 0.62);
+  border-radius: 4px;
+  background: rgba(13, 18, 25, 0.76);
 }
 
 .graph-svg {
@@ -538,6 +621,19 @@ select {
 .edge-line.dashed {
   stroke-dasharray: 6 5;
   opacity: 0.75;
+}
+
+.edge-label {
+  fill: #e6edf3;
+  font-size: 11px;
+  font-weight: 650;
+  paint-order: stroke;
+  stroke: #0d1117;
+  stroke-width: 3px;
+}
+
+.feature-node {
+  cursor: pointer;
 }
 
 .whole-layout,
@@ -594,7 +690,7 @@ select {
 
 .whole-main {
   display: grid;
-  grid-template-rows: minmax(420px, 1fr) minmax(150px, auto);
+  grid-template-rows: minmax(360px, auto) minmax(150px, auto);
   gap: 10px;
   min-width: 0;
 }
@@ -645,16 +741,48 @@ select {
 
 .feature-main {
   display: grid;
-  grid-template-rows: auto minmax(280px, 0.95fr) minmax(210px, 0.7fr);
+  grid-template-rows: auto minmax(260px, auto) minmax(210px, auto);
   gap: 10px;
   min-width: 0;
 }
 
-.feature-selector-row {
+.feature-selector-row,
+.feature-summary-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.feature-summary-card {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--lam-line);
+  border-radius: 6px;
+  background: rgba(21, 27, 35, 0.9);
+  box-shadow: var(--lam-shadow);
+}
+
+.feature-summary-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.inline-metric {
+  display: grid;
+  min-width: 70px;
+  padding: 5px 8px;
+  border: 1px solid var(--lam-line);
+  border-radius: 5px;
+  background: rgba(24, 33, 43, 0.82);
+  color: var(--lam-muted);
+}
+
+.inline-metric strong {
+  color: #ffffff;
 }
 
 .feature-top-split,
@@ -667,9 +795,9 @@ select {
 
 .module-composition {
   display: grid;
-  grid-template-columns: repeat(4, minmax(82px, 1fr));
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 8px;
-  align-content: center;
+  align-content: start;
   min-height: 190px;
 }
 
@@ -677,11 +805,26 @@ select {
   border: 1px solid var(--lam-line-strong);
   border-radius: 5px;
   padding: 8px;
-  min-height: 40px;
+  min-height: 54px;
   background: rgba(24, 33, 43, 0.88);
   color: var(--lam-text);
-  text-align: center;
   overflow-wrap: anywhere;
+}
+
+.module-chip strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.module-chip span {
+  display: block;
+  color: var(--lam-muted);
+  font-size: 11px;
+}
+
+.module-chip.changed {
+  border-color: rgba(88, 166, 255, 0.7);
+  background: rgba(88, 166, 255, 0.12);
 }
 
 .external-grid {
@@ -789,6 +932,15 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .toolbar-controls {
+    justify-content: flex-start;
+  }
+
+  .control-group {
+    border-left: 0;
+    padding-left: 0;
+  }
+
   .validation-row,
   .metric-grid,
   .health-grid,
@@ -804,8 +956,14 @@ select {
   }
 
   .toolbar-actions,
-  .mode-tabs {
+  .mode-tabs,
+  .feature-summary-metrics {
     justify-content: flex-start;
+  }
+
+  .feature-summary-card {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .risk-grid,

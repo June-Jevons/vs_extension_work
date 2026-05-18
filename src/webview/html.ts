@@ -28,6 +28,8 @@ export function getDashboardWebviewHtml(
   <div id="app">${renderDashboardShell(state)}</div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
+    let selectionActive = false;
+    let selectionTimer;
 
     document.addEventListener("click", (event) => {
       const graphControl = event.target.closest("[data-graph-action]");
@@ -142,6 +144,27 @@ export function getDashboardWebviewHtml(
       }
       if (target.getAttribute("data-command") === "selectFeature") {
         vscode.postMessage({ type: "selectFeature", featureId: target.value });
+      }
+    });
+
+    document.addEventListener("selectionchange", () => {
+      window.clearTimeout(selectionTimer);
+      selectionTimer = window.setTimeout(() => {
+        const selection = window.getSelection();
+        const active = Boolean(selection && selection.toString().length > 0);
+        if (active !== selectionActive) {
+          selectionActive = active;
+          vscode.postMessage({ type: "selectionState", active });
+        }
+      }, 80);
+    });
+
+    document.addEventListener("mouseup", () => {
+      const selection = window.getSelection();
+      const active = Boolean(selection && selection.toString().length > 0);
+      if (active !== selectionActive) {
+        selectionActive = active;
+        vscode.postMessage({ type: "selectionState", active });
       }
     });
 

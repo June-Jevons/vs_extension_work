@@ -10,7 +10,7 @@ import {
   dashboardModes,
   getModeLabel
 } from "./dashboardState";
-import { inferRuntimeFeatureForTestPath } from "../core/featureMapper";
+import { getFeatureDefinition, inferRuntimeFeatureForTestPath } from "../core/featureMapper";
 
 interface GraphStats {
   nodes: number;
@@ -26,6 +26,12 @@ interface PositionedNode {
   width?: number;
   height?: number;
   color: string;
+  kind?: "feature" | "unclassifiedModule" | "module";
+  featureId?: string;
+  path?: string;
+  subLines?: string[];
+  badge?: string;
+  riskLevel?: FeatureBlock["riskLevel"];
 }
 
 interface PositionedEdge {
@@ -41,6 +47,9 @@ interface GraphData {
   viewBox: string;
   emptyReason?: string;
   summary?: string;
+  detailRows?: string[];
+  height?: number;
+  compact?: boolean;
 }
 
 export function renderDashboardShell(state: DashboardState): string {
@@ -48,10 +57,10 @@ export function renderDashboardShell(state: DashboardState): string {
     <main class="dashboard-root" data-testid="dashboard-root" data-mode="${escapeAttribute(state.mode)}">
       <div class="dashboard-shell">
         ${renderTopToolbar(state)}
-        ${renderWorkspaceDiagnosticsPanel(state)}
         <section class="dashboard-mode">
           ${renderModeContent(state)}
         </section>
+        ${renderWorkspaceDiagnosticsPanel(state)}
       </div>
     </main>
   `;
@@ -64,12 +73,20 @@ export function renderTopToolbar(state: DashboardState): string {
         <h1>Live Architecture Map</h1>
         <p>${renderTopSubtitle(state)}</p>
       </div>
-      ${renderModeTabs(state)}
-      <div class="toolbar-actions" aria-label="Dashboard actions">
-        <button class="toolbar-button" type="button" data-command="refresh" title="Refresh dashboard">Refresh</button>
-        <button class="toolbar-button" type="button" data-command="exportSnapshot" title="Export snapshot">Export</button>
-        <button class="toolbar-button" type="button" data-command="configure" title="Configure extension settings">Configure</button>
-        <button class="toolbar-button" type="button" data-command="focusTimeline" title="Open structural timeline">Timeline</button>
+      <div class="toolbar-controls">
+        <div class="control-group mode-group">
+          <span class="control-group-label">Modes</span>
+          ${renderModeTabs(state)}
+        </div>
+        <div class="control-group action-group">
+          <span class="control-group-label">Actions</span>
+          <div class="toolbar-actions" aria-label="Dashboard actions">
+            <button class="toolbar-button" type="button" data-command="refresh" title="Refresh dashboard">Refresh</button>
+            <button class="toolbar-button" type="button" data-command="exportSnapshot" title="Export snapshot">Export</button>
+            <button class="toolbar-button" type="button" data-command="configure" title="Configure extension settings">Configure</button>
+            <button class="toolbar-button" type="button" data-command="focusTimeline" title="Open structural timeline">Timeline</button>
+          </div>
+        </div>
       </div>
     </header>
   `;
@@ -86,8 +103,23 @@ export function renderWorkspaceDiagnosticsPanel(state: DashboardState): string {
     : "Not captured";
   const graphStats = getGraphStatsForMode(state);
 
+  const unclassifiedPaths = diagnostics.unclassifiedModulePaths.length > 0
+    ? diagnostics.unclassifiedModulePaths.join(", ")
+    : "None";
+  const unclassifiedReasons = diagnostics.unclassifiedReasonCounts.length > 0
+    ? diagnostics.unclassifiedReasonCounts.map((item) => `${formatClassificationReason(item.reason)} ${item.count}`).join(", ")
+    : "None";
+
   return `
-    <section class="diagnostics-panel" data-testid="workspace-diagnostics-panel" aria-label="Workspace diagnostics">
+    <details class="diagnostics-panel" data-testid="workspace-diagnostics-panel" aria-label="Workspace diagnostics">
+      <summary>
+        <span class="diagnostics-summary-title">Diagnostics</span>
+        <span>${escapeHtml(String(diagnostics.moduleCount))} modules</span>
+        <span>${escapeHtml(String(diagnostics.dependencyCount))} dependencies</span>
+        <span>${escapeHtml(String(diagnostics.changedFileCount))} changed files</span>
+        <span>${escapeHtml(String(diagnostics.unmappedModuleCount))} unclassified</span>
+      </summary>
+      <div class="diagnostics-grid">
       ${renderDiagnosticItem("Workspace", diagnostics.rootUri)}
       ${renderDiagnosticItem("Source", sourceLabel)}
       ${renderDiagnosticItem("Mock data", state.isMockData ? "true" : "false")}
@@ -96,7 +128,9 @@ export function renderWorkspaceDiagnosticsPanel(state: DashboardState): string {
       ${renderDiagnosticItem("Dependencies", diagnostics.dependencyCount)}
       ${renderDiagnosticItem("Graph nodes", graphStats.nodes)}
       ${renderDiagnosticItem("Graph edges", graphStats.edges)}
-      ${renderDiagnosticItem("Unmapped modules", diagnostics.unmappedModuleCount)}
+      ${renderDiagnosticItem("Unclassified modules", diagnostics.unmappedModuleCount)}
+      ${renderDiagnosticItem("Top unclassified paths", unclassifiedPaths)}
+      ${renderDiagnosticItem("Unclassified reasons", unclassifiedReasons)}
       ${renderDiagnosticItem("Test modules", diagnostics.testModuleCount)}
       ${renderDiagnosticItem("Runtime modules", diagnostics.runtimeModuleCount)}
       ${renderDiagnosticItem("Unresolved imports", diagnostics.unresolvedImportCount)}
@@ -108,7 +142,8 @@ export function renderWorkspaceDiagnosticsPanel(state: DashboardState): string {
       ${renderDiagnosticItem("Baseline", baseline)}
       ${renderDiagnosticItem("Updated", formatDateTime(diagnostics.lastUpdatedIso))}
       ${fallback}
-    </section>
+      </div>
+    </details>
   `;
 }
 
@@ -132,17 +167,10 @@ function renderTopSubtitle(state: DashboardState): string {
       : state.isMockData
         ? "Mock data"
         : "Live workspace data";
-  const diagnostics = state.diagnostics;
   return [
     state.workspace.name,
     getModeLabel(state.mode),
-    status,
-    `Source: ${diagnostics.stateSource === "real" ? "real" : "sample"}`,
-    `Python: ${diagnostics.pythonFileCount}`,
-    `Modules: ${diagnostics.moduleCount}`,
-    `Deps: ${diagnostics.dependencyCount}`,
-    `Changed: ${diagnostics.changedFileCount}`,
-    `Updated: ${formatTime(diagnostics.lastUpdatedIso)}`
+    status
   ].map(escapeHtml).join(" · ");
 }
 
@@ -150,7 +178,7 @@ export function renderLiveChangesMode(state: DashboardState): string {
   return `
     <div class="live-grid">
       ${renderCurrentChangeArea(state)}
-      <section class="panel large-graph-panel" data-testid="architecture-impact-graph" data-graph-panel>
+      <section class="panel large-graph-panel${state.snapshot.impactedFeatures.length <= 4 ? " compact-graph-panel" : ""}" data-testid="architecture-impact-graph" data-graph-panel>
         <div class="panel-header">
           <div class="panel-heading">
             <h2 class="panel-title">Architecture Impact Graph</h2>
@@ -291,8 +319,16 @@ export function renderFeatureFocusMode(state: DashboardState): string {
   const selectedFeature = getSelectedFeature(state);
   const runtimeModules = getRuntimeModulesForFeature(state, selectedFeature.id);
   const relatedTests = getRelatedTestsForFeature(state, selectedFeature, runtimeModules);
-  const externalFeatures = getNeighborFeatures(state, selectedFeature.id).slice(0, 4);
+  const dependencyInfo = getFeatureDependencyInfo(state, selectedFeature.id);
+  const externalFeatures = [...dependencyInfo.incoming, ...dependencyInfo.outgoing]
+    .map((item) => item.feature)
+    .filter((feature, index, features) => features.findIndex((candidate) => candidate.id === feature.id) === index)
+    .slice(0, 6);
+  const changedFiles = state.snapshot.changedFiles.filter((file) => file.featureId === selectedFeature.id);
+  const keyModules = rankKeyModules(runtimeModules, changedFiles).slice(0, 12);
+  const visibleRuntimeModules = keyModules.length > 0 ? keyModules : runtimeModules.slice(0, 12);
   const compositionTitle = selectedFeature.id === "tests" ? "Test Modules" : "Runtime Modules";
+  const riskLevel = getFeatureRiskLevel(selectedFeature, changedFiles, runtimeModules);
 
   return `
     <div class="feature-layout">
@@ -316,20 +352,17 @@ export function renderFeatureFocusMode(state: DashboardState): string {
         <section class="panel">
           <div class="panel-header">
             <div class="panel-heading">
-              <h2 class="panel-title">${escapeHtml(compositionTitle)}</h2>
-              <p class="panel-subtitle">${runtimeModules.length} modules in focus.</p>
+              <h2 class="panel-title">Feature Summary</h2>
+              <p class="panel-subtitle">What this feature is and how it connects.</p>
             </div>
           </div>
           <div class="panel-body">
             <ul class="compact-list">
-              ${runtimeModules.length > 0 ? runtimeModules.map((moduleNode) => `
-                <li>
-                  <span>${escapeHtml(moduleNode.name)}</span>
-                  <span class="risk-pill ${moduleNode.riskLevel}">${escapeHtml(moduleNode.riskLevel)}</span>
-                </li>
-              `).join("") : `
-                <li><span>No runtime modules mapped to this feature.</span><span class="count-badge">0</span></li>
-              `}
+              <li><span>Runtime modules</span><span class="count-badge">${runtimeModules.length}</span></li>
+              <li><span>Changed files</span><span class="count-badge">${changedFiles.length}</span></li>
+              <li><span>Incoming features</span><span class="count-badge">${dependencyInfo.incoming.length}</span></li>
+              <li><span>Outgoing features</span><span class="count-badge">${dependencyInfo.outgoing.length}</span></li>
+              <li><span>Related tests</span><span class="count-badge">${relatedTests.length}</span></li>
             </ul>
           </div>
         </section>
@@ -355,27 +388,33 @@ export function renderFeatureFocusMode(state: DashboardState): string {
         </section>
       </aside>
       <div class="feature-main">
-        <div class="feature-selector-row">
+        <section class="feature-summary-card" data-testid="feature-focus-summary">
           <div>
-            <h2 class="panel-title">${escapeHtml(selectedFeature.label)} Feature Detail</h2>
+            <h2 class="panel-title">${escapeHtml(selectedFeature.label)}</h2>
             <p class="panel-subtitle">${escapeHtml(selectedFeature.description)}</p>
           </div>
-          <div class="inline-actions">
-            <span class="risk-pill ${selectedFeature.riskLevel}">${escapeHtml(selectedFeature.riskLevel)} risk</span>
-            <button class="toolbar-button" type="button" data-command="refresh">Refresh</button>
+          <div class="feature-summary-metrics">
+            ${renderInlineMetric("Runtime", runtimeModules.length)}
+            ${renderInlineMetric("Changed", changedFiles.length)}
+            ${renderInlineMetric("Incoming", dependencyInfo.incomingEdgeCount)}
+            ${renderInlineMetric("Outgoing", dependencyInfo.outgoingEdgeCount)}
+            <span class="risk-pill ${riskLevel}">${escapeHtml(capitalize(riskLevel))} risk</span>
           </div>
-        </div>
+        </section>
         <div class="feature-top-split">
           <section class="panel" data-testid="module-composition-panel">
             <div class="panel-header">
               <div class="panel-heading">
-                <h2 class="panel-title">${escapeHtml(compositionTitle)}</h2>
-                <p class="panel-subtitle">Primary modules for the selected feature. Tests are separated below.</p>
+                <h2 class="panel-title">Key ${escapeHtml(compositionTitle)}</h2>
+                <p class="panel-subtitle">${visibleRuntimeModules.length > 0 ? `Showing ${visibleRuntimeModules.length} of ${runtimeModules.length}. Changed modules, connected modules, and entry points rank first.` : "No runtime modules mapped."}</p>
               </div>
             </div>
             <div class="panel-body module-composition">
-              ${runtimeModules.length > 0 ? runtimeModules.map((moduleNode) => `
-                <div class="module-chip" title="${escapeAttribute(moduleNode.path)}">${escapeHtml(moduleNode.name)}</div>
+              ${visibleRuntimeModules.length > 0 ? visibleRuntimeModules.map((moduleNode) => `
+                <div class="module-chip ${changedFiles.some((file) => file.moduleId === moduleNode.id) ? "changed" : ""}" title="${escapeAttribute(moduleNode.path)}">
+                  <strong>${escapeHtml(moduleNode.name)}</strong>
+                  <span>${escapeHtml(moduleNode.path)}</span>
+                </div>
               `).join("") : `
                 <div class="empty-state">No runtime modules are mapped to this feature yet.</div>
               `}
@@ -398,20 +437,40 @@ export function renderFeatureFocusMode(state: DashboardState): string {
           <section class="panel" data-testid="related-external-dependencies">
             <div class="panel-header">
               <div class="panel-heading">
-                <h2 class="panel-title">External / Neighbor Features</h2>
-                <p class="panel-subtitle">Feature blocks with import relationships to this feature.</p>
+                <h2 class="panel-title">Feature Dependencies</h2>
+                <p class="panel-subtitle">What depends on this feature, and what this feature depends on.</p>
               </div>
             </div>
             <div class="panel-body external-grid">
-              ${externalFeatures.length > 0 ? externalFeatures.map((feature) => `
+              ${dependencyInfo.incoming.length > 0 || dependencyInfo.outgoing.length > 0 ? `
                 <article class="external-card">
-                  <div class="external-title">${escapeHtml(feature.label)}</div>
-                  <div>${feature.moduleIds.slice(0, 2).map((moduleId) => escapeHtml(getModuleName(state, moduleId))).join("<br>")}</div>
+                  <div class="external-title">Depends On</div>
+                  <div>${dependencyInfo.outgoing.length > 0
+                    ? dependencyInfo.outgoing.slice(0, 5).map((item) => `${escapeHtml(item.feature.label)} <span class="count-badge">${item.count}</span>`).join("<br>")
+                    : "No outgoing feature dependencies."}</div>
                 </article>
-              `).join("") : `
                 <article class="external-card">
-                  <div class="external-title">No neighbors</div>
-                  <div>No cross-feature imports were resolved for this feature.</div>
+                  <div class="external-title">Depended On By</div>
+                  <div>${dependencyInfo.incoming.length > 0
+                    ? dependencyInfo.incoming.slice(0, 5).map((item) => `${escapeHtml(item.feature.label)} <span class="count-badge">${item.count}</span>`).join("<br>")
+                    : "No incoming feature dependencies."}</div>
+                </article>
+                ${changedFiles.length > 0 ? `
+                  <article class="external-card">
+                    <div class="external-title">Changed Here</div>
+                    <div>${changedFiles.slice(0, 5).map((file) => escapeHtml(file.path)).join("<br>")}</div>
+                  </article>
+                ` : ""}
+                ${externalFeatures.slice(0, 3).map((feature) => `
+                  <article class="external-card">
+                    <div class="external-title">${escapeHtml(feature.label)}</div>
+                    <div>${feature.moduleIds.slice(0, 2).map((moduleId) => escapeHtml(getModuleName(state, moduleId))).join("<br>")}</div>
+                  </article>
+                `).join("")}
+              ` : `
+                <article class="external-card">
+                  <div class="external-title">No cross-feature imports</div>
+                  <div>No resolved local imports connect this feature to another feature.</div>
                 </article>
               `}
             </div>
@@ -569,26 +628,30 @@ export function renderDependencyGraph(state: DashboardState): string {
 }
 
 export function renderChangedFilesTable(state: DashboardState): string {
+  const visibleCount = state.snapshot.changedFiles.length;
   return `
     <section class="panel" data-testid="changed-files-table">
       <div class="panel-header">
         <div class="panel-heading">
           <h2 class="panel-title">Changed Files</h2>
-          <p class="panel-subtitle">Recent modified files mapped to features.</p>
+          <p class="panel-subtitle">Actual Git status entries from ${escapeHtml(state.diagnostics.gitStatusSource)}. Showing ${visibleCount} changed file${visibleCount === 1 ? "" : "s"}.</p>
         </div>
       </div>
-      <div class="panel-body table-wrap">
+      <div class="panel-body table-wrap changed-files-scroll">
         <table class="data-table">
           <thead>
             <tr>
-              <th>File</th>
               <th>Status</th>
+              <th>Path</th>
               <th>Feature</th>
-              <th>Last Change</th>
+              <th>Risk</th>
+              <th>Reason</th>
             </tr>
           </thead>
           <tbody>
-            ${state.snapshot.changedFiles.map((file) => renderChangedFileRow(file, state)).join("")}
+            ${state.snapshot.changedFiles.length > 0
+              ? state.snapshot.changedFiles.map((file) => renderChangedFileRow(file, state)).join("")
+              : `<tr><td colspan="5" class="path-cell">No changed files reported by Git.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -703,13 +766,36 @@ function renderFeatureNode(feature: FeatureBlock, x: number, y: number, width: n
   const moduleCountLabel = `${feature.moduleIds.length} modules`;
 
   return `
-    <g class="feature-node">
-      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="${color}20" stroke="${color}" />
+    <g class="feature-node" data-feature-id="${escapeAttribute(feature.id)}">
+      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="6" fill="${color}20" stroke="${color}" />
       <text x="${x + 14}" y="${y + 25}" class="node-label" fill="${color}">${escapeHtml(feature.label)}</text>
       ${moduleLines}
       <rect x="${x + width - 55}" y="${y + height - 28}" width="46" height="20" rx="4" fill="${color}30" stroke="${color}" />
       <text x="${x + width - 47}" y="${y + height - 14}" class="node-small">${escapeHtml(capitalize(feature.riskLevel))}</text>
       <text x="${x + 14}" y="${y + height - 14}" class="node-small">${escapeHtml(moduleCountLabel)}</text>
+    </g>
+  `;
+}
+
+function renderGraphNode(node: PositionedNode, feature: FeatureBlock | undefined): string {
+  if (feature) {
+    return renderFeatureNode(feature, node.x, node.y, node.width ?? 184, node.height ?? 96, node.color);
+  }
+
+  const width = node.width ?? 184;
+  const height = node.height ?? 88;
+  const lines = (node.subLines ?? []).slice(0, 2).map((line, index) => `
+    <text x="${node.x + 12}" y="${node.y + 45 + index * 17}" class="node-small">${escapeHtml(line)}</text>
+  `).join("");
+  const badge = node.badge
+    ? `<text x="${node.x + 12}" y="${node.y + height - 13}" class="node-small">${escapeHtml(node.badge)}</text>`
+    : "";
+  return `
+    <g class="feature-node unclassified-node"${node.featureId ? ` data-feature-id="${escapeAttribute(node.featureId)}"` : ""}>
+      <rect x="${node.x}" y="${node.y}" width="${width}" height="${height}" rx="6" fill="${node.color}20" stroke="${node.color}" />
+      <text x="${node.x + 12}" y="${node.y + 24}" class="node-label" fill="${node.color}">${escapeHtml(node.label)}</text>
+      ${lines}
+      ${badge}
     </g>
   `;
 }
@@ -729,7 +815,7 @@ function renderBeforeAfterGraph(state: DashboardState): string {
 function renderFeatureGraph(graph: GraphData, state: DashboardState, ariaLabel: string): string {
   const featureById = new Map(state.snapshot.featureBlocks.map((feature) => [feature.id, feature]));
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
-  const edgeMarkup = graph.edges.map((edge) => {
+  const edgeMarkup = graph.edges.map((edge, index) => {
     const from = nodeById.get(edge.from);
     const to = nodeById.get(edge.to);
     if (!from || !to) {
@@ -739,22 +825,21 @@ function renderFeatureGraph(graph: GraphData, state: DashboardState, ariaLabel: 
     const fromY = from.y + (from.height ?? 0) / 2;
     const toX = to.x;
     const toY = to.y + (to.height ?? 0) / 2;
+    const offset = ((index % 5) - 2) * 12;
     const midX = Math.round((fromX + toX) / 2);
-    const label = edge.count && edge.count > 1
-      ? `<text x="${midX}" y="${Math.round((fromY + toY) / 2) - 6}" class="node-small">${edge.count}</text>`
+    const midY = Math.round((fromY + toY) / 2) + offset;
+    const label = edge.count
+      ? `<text x="${midX - 7}" y="${midY - 7}" class="edge-label">${edge.count}</text>`
       : "";
     return `
-      <path class="edge-line${edge.kind === "test" ? " dashed" : ""}" d="M${fromX} ${fromY} C${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}" />
+      <path class="edge-line${edge.kind === "test" ? " dashed" : ""}" d="M${fromX} ${fromY} C${midX + offset} ${fromY}, ${midX - offset} ${toY}, ${toX} ${toY}" />
       ${label}
     `;
   }).join("");
 
   const nodeMarkup = graph.nodes.map((node) => {
     const feature = featureById.get(node.id);
-    if (!feature) {
-      return "";
-    }
-    return renderFeatureNode(feature, node.x, node.y, node.width ?? 220, node.height ?? 118, node.color);
+    return renderGraphNode(node, feature);
   }).join("");
 
   return renderGraphStage(graph, ariaLabel, edgeMarkup, nodeMarkup);
@@ -787,18 +872,23 @@ function renderGraphStage(graph: GraphData, ariaLabel: string, edgeMarkup: strin
   const summary = graph.summary
     ? `<div class="graph-summary">${escapeHtml(graph.summary)}</div>`
     : "";
+  const details = graph.detailRows && graph.detailRows.length > 0
+    ? `<div class="graph-detail-list">${graph.detailRows.map((row) => `<span>${escapeHtml(row)}</span>`).join("")}</div>`
+    : "";
+  const style = graph.height ? ` style="min-height:${graph.height}px"` : "";
 
   return `
-    <div class="graph-stage" data-node-count="${graph.nodes.length}" data-edge-count="${graph.edges.length}">
+    <div class="graph-stage${graph.compact ? " compact" : ""}" data-node-count="${graph.nodes.length}" data-edge-count="${graph.edges.length}"${style}>
       ${emptyState}
       ${summary}
-      <svg class="graph-svg" viewBox="${escapeAttribute(graph.viewBox)}" data-fit-viewbox="${escapeAttribute(graph.viewBox)}" role="img" aria-label="${escapeAttribute(ariaLabel)}">
+      <svg class="graph-svg" viewBox="${escapeAttribute(graph.viewBox)}" data-fit-viewbox="${escapeAttribute(graph.viewBox)}" preserveAspectRatio="xMinYMin meet" role="img" aria-label="${escapeAttribute(ariaLabel)}">
         ${renderSvgDefs()}
         <g class="graph-viewport">
           ${edgeMarkup}
           ${nodeMarkup}
         </g>
       </svg>
+      ${details}
     </div>
   `;
 }
@@ -809,16 +899,23 @@ function getWholeArchitectureGraphData(state: DashboardState): GraphData {
     return emptyGraph("No feature blocks were produced. Run analysis on a workspace with readable Python files.");
   }
 
-  const nodes = layoutFeatureNodes(features);
-  const visibleFeatureIds = new Set(features.map((feature) => feature.id));
-  const edges = getInterFeatureEdges(state)
-    .filter((edge) => visibleFeatureIds.has(edge.from) && visibleFeatureIds.has(edge.to));
+  const allEdges = getInterFeatureEdges(state);
+  const visibleEdges = limitEdges(allEdges, 18);
+  const nodes = layoutFeatureNodesForGraph(state, features, visibleEdges);
+  const visibleNodeIds = new Set(nodes.map((node) => node.id));
+  const edges = visibleEdges.filter((edge) => visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to));
+  const hiddenEdgeCount = Math.max(allEdges.length - edges.length, 0);
 
   return {
     nodes,
     edges,
-    viewBox: getViewBox(nodes),
-    summary: `${features.length} feature blocks, ${edges.length} inter-feature dependency edges.`
+    viewBox: getViewBox(nodes, nodes.length <= 4 ? 760 : 940, nodes.length <= 4 ? 250 : 360),
+    summary: hiddenEdgeCount > 0
+      ? `Showing top ${edges.length} of ${allEdges.length} inter-feature dependency edges.`
+      : `${features.length} feature blocks, ${edges.length} inter-feature dependency edges.`,
+    detailRows: edgeDetailRows(edges, state),
+    height: nodes.length <= 4 ? 240 : 360,
+    compact: nodes.length <= 4
   };
 }
 
@@ -840,16 +937,26 @@ function getImpactGraphData(state: DashboardState): GraphData {
     return emptyGraph("Changed files were found, but none could be mapped to feature blocks.");
   }
 
-  const nodes = layoutFeatureNodes(features);
+  const allEdges = getInterFeatureEdges(state)
+    .filter((edge) => impactedIds.has(edge.from) && impactedIds.has(edge.to));
+  const edges = limitEdges(allEdges, 12);
+  const changedFeatureIds = new Set(state.snapshot.changedFiles
+    .map((file) => file.featureId)
+    .filter((featureId): featureId is string => Boolean(featureId)));
+  const nodes = layoutFeatureNodesForGraph(state, features, edges, changedFeatureIds);
   const visibleFeatureIds = new Set(features.map((feature) => feature.id));
-  const edges = getInterFeatureEdges(state)
-    .filter((edge) => visibleFeatureIds.has(edge.from) && visibleFeatureIds.has(edge.to));
+  const visibleEdges = edges.filter((edge) => visibleFeatureIds.has(edge.from) && visibleFeatureIds.has(edge.to));
 
   return {
     nodes,
-    edges,
-    viewBox: getViewBox(nodes),
-    summary: `${state.snapshot.changedFiles.length} changed files across ${features.length} impacted feature blocks.`
+    edges: visibleEdges,
+    viewBox: getViewBox(nodes, nodes.length <= 4 ? 760 : 900, nodes.length <= 4 ? 230 : 320),
+    summary: allEdges.length > visibleEdges.length
+      ? `${state.snapshot.changedFiles.length} changed files across ${features.length} impacted feature blocks; showing top ${visibleEdges.length} of ${allEdges.length} feature edges.`
+      : `${state.snapshot.changedFiles.length} changed files across ${features.length} impacted feature blocks.`,
+    detailRows: edgeDetailRows(visibleEdges, state),
+    height: nodes.length <= 4 ? 210 : 310,
+    compact: nodes.length <= 4
   };
 }
 
@@ -888,8 +995,11 @@ function getDependencyGraphData(state: DashboardState): GraphData {
     edges,
     viewBox: getPointViewBox(nodes),
     summary: hiddenNodeCount > 0 || hiddenEdgeCount > 0
-      ? `Representative subgraph: showing ${nodes.length}/${state.snapshot.modules.length} modules and ${edges.length}/${state.snapshot.dependencies.length} edges.`
-      : `${nodes.length} modules and ${edges.length} dependency edges.`
+      ? `Representative subgraph: showing ${nodes.length}/${state.snapshot.modules.length} modules and ${edges.length}/${state.snapshot.dependencies.length} resolved local import edges. Selection: ${changedModuleIds.length > 0 ? "changed modules and nearest neighbors first" : "top connected modules"}.`
+      : `${nodes.length} modules and ${edges.length} resolved local import edges. Selection: ${changedModuleIds.length > 0 ? "changed modules and nearest neighbors" : "top connected modules"}.`,
+    detailRows: [`Unresolved imports are counted in diagnostics (${state.diagnostics.unresolvedImportCount}) and are not drawn as edges.`],
+    height: nodes.length <= 5 ? 230 : 280,
+    compact: nodes.length <= 5
   };
 }
 
@@ -910,7 +1020,9 @@ function getInternalDependencyGraphData(modules: ModuleNode[]): GraphData {
     edges,
     viewBox: getPointViewBox(nodes),
     emptyReason: edges.length === 0 ? "No internal imports were resolved among these modules." : undefined,
-    summary: `${visibleModules.length} modules, ${edges.length} internal dependency edges.`
+    summary: `${visibleModules.length} modules, ${edges.length} internal dependency edges.`,
+    height: visibleModules.length <= 5 ? 230 : 280,
+    compact: visibleModules.length <= 5
   };
 }
 
@@ -942,7 +1054,9 @@ function getBeforeAfterGraphData(state: DashboardState): GraphData {
     nodes,
     edges,
     viewBox: getPointViewBox(nodes),
-    summary: `${diff.addedEdges.length} added and ${diff.removedEdges.length} removed dependency edges since baseline.`
+    summary: `${diff.addedEdges.length} added and ${diff.removedEdges.length} removed dependency edges since baseline.`,
+    height: nodes.length <= 5 ? 230 : 310,
+    compact: nodes.length <= 5
   };
 }
 
@@ -998,6 +1112,15 @@ function renderSummaryCard(label: string, value: number, detail: string, tone: "
       <div class="summary-value">${value}</div>
       <div class="validation-detail">${escapeHtml(detail)}</div>
     </article>
+  `;
+}
+
+function renderInlineMetric(label: string, value: number): string {
+  return `
+    <span class="inline-metric">
+      <strong>${escapeHtml(String(value))}</strong>
+      <span>${escapeHtml(label)}</span>
+    </span>
   `;
 }
 
@@ -1072,13 +1195,15 @@ function renderChangedFileRow(file: ChangedFile, state: DashboardState): string 
   const feature = file.featureId
     ? state.snapshot.featureBlocks.find((candidate) => candidate.id === file.featureId)
     : undefined;
+  const fallbackFeature = getFeatureDefinition(file.featureId);
 
   return `
     <tr>
-      <td class="path-cell">${escapeHtml(file.path)}</td>
       <td><span class="status-pill">${escapeHtml(getStatusAbbreviation(file.status))}</span></td>
-      <td>${escapeHtml(feature?.label ?? "Unknown")}</td>
-      <td>${escapeHtml(file.lastChangedIso ? formatTime(file.lastChangedIso) : "Unknown")}</td>
+      <td class="path-cell">${escapeHtml(file.path)}</td>
+      <td>${escapeHtml(feature?.label ?? fallbackFeature.label)}</td>
+      <td><span class="risk-pill ${file.riskLevel}">${escapeHtml(capitalize(file.riskLevel))}</span></td>
+      <td>${escapeHtml(file.reason)}</td>
     </tr>
   `;
 }
@@ -1151,7 +1276,7 @@ function getSelectedFeature(state: DashboardState): FeatureBlock {
   const selected = state.snapshot.featureBlocks.find((feature) => feature.id === state.selectedFeatureId);
   return selected ?? state.snapshot.featureBlocks[0] ?? {
     id: "unmapped-unknown",
-    label: "Unmapped / Unknown",
+    label: "Unclassified Modules",
     description: "No feature blocks are available.",
     pathPatterns: [],
     moduleIds: [],
@@ -1240,6 +1365,78 @@ function getNeighborFeatures(state: DashboardState, featureId: string): FeatureB
     .sort(compareFeatureBlocks);
 }
 
+function getFeatureDependencyInfo(state: DashboardState, featureId: string): {
+  incoming: Array<{ feature: FeatureBlock; count: number }>;
+  outgoing: Array<{ feature: FeatureBlock; count: number }>;
+  incomingEdgeCount: number;
+  outgoingEdgeCount: number;
+} {
+  const featuresById = new Map(state.snapshot.featureBlocks.map((feature) => [feature.id, feature]));
+  const incoming = new Map<string, number>();
+  const outgoing = new Map<string, number>();
+
+  for (const edge of getInterFeatureEdges(state)) {
+    const count = edge.count ?? 1;
+    if (edge.to === featureId) {
+      incoming.set(edge.from, (incoming.get(edge.from) ?? 0) + count);
+    }
+    if (edge.from === featureId) {
+      outgoing.set(edge.to, (outgoing.get(edge.to) ?? 0) + count);
+    }
+  }
+
+  const toList = (values: Map<string, number>) => [...values.entries()]
+    .map(([id, count]) => ({
+      feature: featuresById.get(id),
+      count
+    }))
+    .filter((item): item is { feature: FeatureBlock; count: number } => Boolean(item.feature))
+    .sort((left, right) => right.count - left.count || left.feature.label.localeCompare(right.feature.label));
+
+  const incomingList = toList(incoming);
+  const outgoingList = toList(outgoing);
+  return {
+    incoming: incomingList,
+    outgoing: outgoingList,
+    incomingEdgeCount: incomingList.reduce((total, item) => total + item.count, 0),
+    outgoingEdgeCount: outgoingList.reduce((total, item) => total + item.count, 0)
+  };
+}
+
+function rankKeyModules(runtimeModules: ModuleNode[], changedFiles: ChangedFile[]): ModuleNode[] {
+  const changedModuleIds = new Set(changedFiles.map((file) => file.moduleId).filter((moduleId): moduleId is string => Boolean(moduleId)));
+  return [...runtimeModules]
+    .sort((left, right) => scoreKeyModule(right, changedModuleIds) - scoreKeyModule(left, changedModuleIds)
+      || left.path.localeCompare(right.path));
+}
+
+function scoreKeyModule(moduleNode: ModuleNode, changedModuleIds: ReadonlySet<string>): number {
+  let score = 0;
+  if (changedModuleIds.has(moduleNode.id)) {
+    score += 100;
+  }
+  score += (moduleNode.imports.length + moduleNode.importedBy.length) * 5;
+  if (moduleNode.isEntryPoint) {
+    score += 20;
+  }
+  if (moduleNode.riskLevel === "high") {
+    score += 12;
+  } else if (moduleNode.riskLevel === "medium") {
+    score += 6;
+  }
+  return score;
+}
+
+function getFeatureRiskLevel(feature: FeatureBlock, changedFiles: ChangedFile[], runtimeModules: ModuleNode[]): FeatureBlock["riskLevel"] {
+  if (changedFiles.some((file) => file.riskLevel === "high") || runtimeModules.some((moduleNode) => moduleNode.riskLevel === "high")) {
+    return "high";
+  }
+  if (changedFiles.some((file) => file.riskLevel === "medium") || runtimeModules.some((moduleNode) => moduleNode.riskLevel === "medium")) {
+    return "medium";
+  }
+  return feature.riskLevel;
+}
+
 function getRelatedTestsForFeature(
   state: DashboardState,
   selectedFeature: FeatureBlock,
@@ -1315,27 +1512,169 @@ function getInterFeatureEdges(state: DashboardState): PositionedEdge[] {
   return [...edgeCounts.values()].sort((left, right) => right.count - left.count || `${left.from}->${left.to}`.localeCompare(`${right.from}->${right.to}`));
 }
 
-function layoutFeatureNodes(features: FeatureBlock[]): PositionedNode[] {
-  const nodeWidth = 224;
-  const nodeHeight = 122;
-  const gapX = 92;
-  const gapY = 72;
-  const margin = 44;
-  const columns = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(features.length))));
+function limitEdges(edges: PositionedEdge[], limit: number): PositionedEdge[] {
+  return edges.slice(0, limit);
+}
 
-  return features.map((feature, index) => {
+function edgeDetailRows(edges: PositionedEdge[], state: DashboardState): string[] {
+  const features = new Map(state.snapshot.featureBlocks.map((feature) => [feature.id, feature.label]));
+  return edges.slice(0, 8).map((edge) => {
+    const from = features.get(edge.from) ?? edge.from;
+    const to = features.get(edge.to) ?? edge.to;
+    const count = edge.count ?? 1;
+    return `${from} -> ${to}: ${count} resolved import edge${count === 1 ? "" : "s"}`;
+  });
+}
+
+function layoutFeatureNodesForGraph(
+  state: DashboardState,
+  features: FeatureBlock[],
+  edges: PositionedEdge[],
+  changedFeatureIds = new Set<string>()
+): PositionedNode[] {
+  const expandedFeatures = expandUnclassifiedFeatureNodes(state, features);
+  const normalFeatures = expandedFeatures.filter((node) => node.kind !== "unclassifiedModule");
+  const unclassifiedNodes = expandedFeatures.filter((node) => node.kind === "unclassifiedModule");
+  const nodeWidth = 184;
+  const nodeHeight = 96;
+  const gapX = 92;
+  const gapY = 38;
+  const margin = 24;
+
+  if (changedFeatureIds.size > 0 && normalFeatures.length > 1) {
+    const changed = normalFeatures.filter((node) => changedFeatureIds.has(node.id));
+    const impacted = normalFeatures.filter((node) => !changedFeatureIds.has(node.id));
+    const placed = [
+      ...changed.map((node, index) => ({
+        ...node,
+        x: margin,
+        y: margin + index * (nodeHeight + gapY),
+        width: nodeWidth,
+        height: nodeHeight
+      })),
+      ...impacted.map((node, index) => ({
+        ...node,
+        x: margin + nodeWidth + gapX,
+        y: margin + index * (nodeHeight + gapY),
+        width: nodeWidth,
+        height: nodeHeight
+      }))
+    ];
+    return appendUnclassifiedNodes(placed, unclassifiedNodes, margin, nodeWidth, nodeHeight, gapX, gapY);
+  }
+
+  const outgoingCounts = new Map<string, number>();
+  const incomingCounts = new Map<string, number>();
+  for (const edge of edges) {
+    outgoingCounts.set(edge.from, (outgoingCounts.get(edge.from) ?? 0) + (edge.count ?? 1));
+    incomingCounts.set(edge.to, (incomingCounts.get(edge.to) ?? 0) + (edge.count ?? 1));
+  }
+
+  const sorted = [...normalFeatures].sort((left, right) => {
+    const leftScore = (outgoingCounts.get(left.id) ?? 0) - (incomingCounts.get(left.id) ?? 0);
+    const rightScore = (outgoingCounts.get(right.id) ?? 0) - (incomingCounts.get(right.id) ?? 0);
+    return rightScore - leftScore || left.label.localeCompare(right.label);
+  });
+  const columns = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(sorted.length))));
+  const placed = sorted.map((node, index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
     return {
-      id: feature.id,
-      label: feature.label,
+      ...node,
       x: margin + column * (nodeWidth + gapX),
       y: margin + row * (nodeHeight + gapY),
       width: nodeWidth,
-      height: nodeHeight,
-      color: graphColor(index)
+      height: nodeHeight
     };
   });
+
+  return appendUnclassifiedNodes(placed, unclassifiedNodes, margin, nodeWidth, nodeHeight, gapX, gapY);
+}
+
+function expandUnclassifiedFeatureNodes(state: DashboardState, features: FeatureBlock[]): PositionedNode[] {
+  const unclassified = features.find((feature) => feature.id === "unmapped-unknown");
+  const regularNodes = features
+    .filter((feature) => feature.id !== "unmapped-unknown")
+    .map((feature, index): PositionedNode => ({
+      id: feature.id,
+      label: feature.label,
+      x: 0,
+      y: 0,
+      width: 184,
+      height: 96,
+      color: graphColor(index),
+      kind: "feature",
+      featureId: feature.id
+    }));
+
+  if (!unclassified) {
+    return regularNodes;
+  }
+
+  const modules = state.snapshot.modules
+    .filter((moduleNode) => moduleNode.featureId === "unmapped-unknown" && !moduleNode.isTest)
+    .sort((left, right) => left.path.localeCompare(right.path));
+  if (modules.length > 0 && modules.length <= 8) {
+    return [
+      ...regularNodes,
+      ...modules.map((moduleNode, index): PositionedNode => ({
+        id: `unclassified:${moduleNode.id}`,
+        label: shortenModuleLabel(moduleNode.name),
+        x: 0,
+        y: 0,
+        width: 184,
+        height: 88,
+        color: "#8d99a8",
+        kind: "unclassifiedModule",
+        featureId: unclassified.id,
+        path: moduleNode.path,
+        subLines: [moduleNode.path, formatClassificationReason(moduleNode.classificationReason?.category)],
+        badge: "Unclassified module",
+        riskLevel: moduleNode.riskLevel
+      }))
+    ];
+  }
+
+  return [
+    ...regularNodes,
+    {
+      id: unclassified.id,
+      label: "Unclassified Modules",
+      x: 0,
+      y: 0,
+      width: 184,
+      height: 96,
+      color: "#8d99a8",
+      kind: "feature",
+      featureId: unclassified.id,
+      subLines: modules.slice(0, 3).map((moduleNode) => moduleNode.path),
+      badge: `${modules.length} modules`
+    }
+  ];
+}
+
+function appendUnclassifiedNodes(
+  placed: PositionedNode[],
+  unclassifiedNodes: PositionedNode[],
+  margin: number,
+  nodeWidth: number,
+  nodeHeight: number,
+  gapX: number,
+  gapY: number
+): PositionedNode[] {
+  if (unclassifiedNodes.length === 0) {
+    return placed;
+  }
+  const startColumn = Math.max(1, Math.ceil(Math.sqrt(Math.max(placed.length, 1))));
+  const startX = margin + startColumn * (nodeWidth + gapX);
+  const nodes = unclassifiedNodes.map((node, index) => ({
+    ...node,
+    x: startX,
+    y: margin + index * (nodeHeight + gapY),
+    width: node.width ?? nodeWidth,
+    height: node.height ?? nodeHeight
+  }));
+  return [...placed, ...nodes];
 }
 
 function layoutModuleNodes(modules: ModuleNode[]): PositionedNode[] {
@@ -1355,15 +1694,15 @@ function layoutModuleNodes(modules: ModuleNode[]): PositionedNode[] {
   });
 }
 
-function getViewBox(nodes: PositionedNode[]): string {
+function getViewBox(nodes: PositionedNode[], minWidth = 640, minHeight = 260): string {
   if (nodes.length === 0) {
     return "0 0 840 420";
   }
-  const minX = Math.min(...nodes.map((node) => node.x)) - 42;
-  const minY = Math.min(...nodes.map((node) => node.y)) - 42;
-  const maxX = Math.max(...nodes.map((node) => node.x + (node.width ?? 0))) + 42;
-  const maxY = Math.max(...nodes.map((node) => node.y + (node.height ?? 0))) + 42;
-  return `${minX} ${minY} ${Math.max(maxX - minX, 360)} ${Math.max(maxY - minY, 240)}`;
+  const minX = Math.min(...nodes.map((node) => node.x)) - 24;
+  const minY = Math.min(...nodes.map((node) => node.y)) - 24;
+  const maxX = Math.max(...nodes.map((node) => node.x + (node.width ?? 0))) + 24;
+  const maxY = Math.max(...nodes.map((node) => node.y + (node.height ?? 0))) + 24;
+  return `${minX} ${minY} ${Math.max(maxX - minX, minWidth)} ${Math.max(maxY - minY, minHeight)}`;
 }
 
 function getPointViewBox(nodes: PositionedNode[]): string {
@@ -1537,6 +1876,23 @@ function formatPathKind(value: DashboardState["diagnostics"]["pathKind"]): strin
       return "Local";
     case "unknown":
       return "Unknown";
+  }
+}
+
+function formatClassificationReason(value: NonNullable<ModuleNode["classificationReason"]>["category"] | undefined): string {
+  switch (value) {
+    case "path-pattern-match":
+      return "path pattern match";
+    case "import-neighbor-inference":
+      return "import-neighbor inference";
+    case "no-path-pattern-match":
+      return "no path pattern match";
+    case "no-strong-import-neighbor-inference":
+      return "no strong import-neighbor inference";
+    case "ambiguous-match":
+      return "ambiguous match";
+    default:
+      return "not classified";
   }
 }
 

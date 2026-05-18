@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { getFeatureDefinition, isTestPath, mapFeatureForPath } from "./featureMapper";
+import { classifyFeatureForPath, getFeatureDefinition, isTestPath } from "./featureMapper";
 import { ModuleNode } from "../webview/dashboardState";
 import { ModuleImportRecord } from "../graph/dependencyGraph";
 import { parsePythonImports } from "../graph/importParser";
@@ -71,7 +71,17 @@ export async function scanWorkspace(
     totalClasses += metrics.classes;
     totalFunctions += metrics.functions;
     const isTest = isTestPath(relativePath);
-    const feature = isTest ? getFeatureDefinition("tests") : mapFeatureForPath(relativePath);
+    const classification = isTest
+      ? {
+        feature: getFeatureDefinition("tests"),
+        reason: {
+          category: "path-pattern-match" as const,
+          detail: "Path is under tests or follows test naming.",
+          confidence: "high" as const
+        }
+      }
+      : classifyFeatureForPath(relativePath);
+    const feature = classification.feature;
 
     modules.push({
       id: moduleId,
@@ -80,6 +90,7 @@ export async function scanWorkspace(
       language: "python",
       packageName: moduleId.replaceAll("/", "."),
       featureId: feature.id,
+      classificationReason: classification.reason,
       imports: [],
       importedBy: [],
       isEntryPoint: isLikelyEntryPoint(relativePath, source),

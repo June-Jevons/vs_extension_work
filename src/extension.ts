@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { DashboardLauncherViewProvider, launcherViewId } from "./activityBar/dashboardLauncherView";
 import { registerLiveArchitectureCommands } from "./commands/commandRegistry";
 import { LiveArchitectureStateManager } from "./core/analysisEngine";
 import { describePathKind, getLiveArchitectureOutputChannel, logInfo } from "./core/outputChannel";
@@ -7,11 +8,10 @@ import { SnapshotStore } from "./storage/snapshotStore";
 import { DashboardMode, isDashboardMode } from "./webview/dashboardState";
 import { DashboardPanel } from "./webview/dashboardPanel";
 import { WorkspaceWatcher } from "./watchers/workspaceWatcher";
-import { commandIds } from "./commands/commands";
 
 export interface LiveArchitectureMapApi {
-  statusBarItem: vscode.StatusBarItem;
   stateManager: LiveArchitectureStateManager;
+  launcherViewProvider: DashboardLauncherViewProvider;
 }
 
 export function activate(context: vscode.ExtensionContext): LiveArchitectureMapApi {
@@ -30,18 +30,18 @@ export function activate(context: vscode.ExtensionContext): LiveArchitectureMapA
   const baselineStore = new BaselineStore(context);
   const stateManager = new LiveArchitectureStateManager(context, snapshotStore, baselineStore);
   const watcher = new WorkspaceWatcher(stateManager);
-  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  statusBarItem.name = "Live Architecture Map";
-  statusBarItem.text = "$(map) Live Architecture Map";
-  statusBarItem.tooltip = "Open Live Architecture Map dashboard";
-  statusBarItem.command = commandIds.openDashboard;
-  statusBarItem.show();
+  const launcherViewProvider = new DashboardLauncherViewProvider(context, stateManager);
 
   context.subscriptions.push(
     outputChannel,
     stateManager,
     watcher,
-    statusBarItem,
+    launcherViewProvider,
+    vscode.window.registerWebviewViewProvider(launcherViewId, launcherViewProvider, {
+      webviewOptions: {
+        retainContextWhenHidden: true
+      }
+    }),
     ...registerLiveArchitectureCommands(context, stateManager)
   );
 
@@ -59,8 +59,8 @@ export function activate(context: vscode.ExtensionContext): LiveArchitectureMapA
   }
 
   return {
-    statusBarItem,
-    stateManager
+    stateManager,
+    launcherViewProvider
   };
 }
 

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { createHash } from "crypto";
 import { commandIds } from "../commands/commands";
 import { LiveArchitectureStateManager } from "../core/analysisEngine";
 import { logInfo } from "../core/outputChannel";
@@ -20,6 +21,9 @@ export interface DashboardCommandResult {
 
 export class DashboardPanel {
   private static currentPanel: DashboardPanel | undefined;
+  private lastRenderedHash = "";
+  private selectionActive = false;
+  private pendingRender = false;
 
   private constructor(
     private readonly context: vscode.ExtensionContext,
@@ -35,7 +39,7 @@ export class DashboardPanel {
     }, undefined, this.context.subscriptions);
 
     this.stateManager.onDidChangeState(() => {
-      this.render();
+      this.render({ respectSelection: true });
     }, undefined, this.context.subscriptions);
   }
 
@@ -68,7 +72,7 @@ export class DashboardPanel {
     } else if (selectedFeatureId) {
       stateManager.setMode("featureFocus", selectedFeatureId);
     }
-    DashboardPanel.currentPanel.render();
+    DashboardPanel.currentPanel.render({ force: true });
     const state = stateManager.getState();
     logInfo(`dashboard opened: mode=${state.mode}, stateSource=${state.diagnostics.stateSource}, isMockData=${state.isMockData}`);
     return DashboardPanel.currentPanel.getCommandResult();
@@ -84,7 +88,7 @@ export class DashboardPanel {
       return DashboardPanel.show(context, stateManager);
     }
     await stateManager.refresh(mode);
-    DashboardPanel.currentPanel.render();
+    DashboardPanel.currentPanel.render({ force: true });
     return DashboardPanel.currentPanel.getCommandResult();
   }
 
@@ -100,6 +104,12 @@ export class DashboardPanel {
     switch (message.type) {
       case "ready":
         await this.panel.webview.postMessage({ type: "state", state: this.stateManager.getState() });
+        return;
+      case "selectionState":
+        this.selectionActive = message.active;
+        if (!this.selectionActive && this.pendingRender) {
+          this.render({ force: true });
+        }
         return;
       case "setMode":
         this.stateManager.setMode(message.mode);
@@ -128,11 +138,21 @@ export class DashboardPanel {
     }
   }
 
-  private render(): void {
+  private render(options: { force?: boolean; respectSelection?: boolean } = {}): void {
     const state = this.stateManager.getState();
+    const renderHash = getRenderHash(state);
+    if (!options.force && renderHash === this.lastRenderedHash) {
+      return;
+    }
+    if (options.respectSelection && this.selectionActive) {
+      this.pendingRender = true;
+      return;
+    }
     const graphStats = getGraphStatsForMode(state);
     this.panel.title = `Live Architecture Map: ${state.mode}`;
     this.panel.webview.html = getDashboardWebviewHtml(this.panel.webview, state, getNonce());
+    this.lastRenderedHash = renderHash;
+    this.pendingRender = false;
     logInfo(`dashboard render: title=${this.panel.title}, subtitleSource=${state.isMockData ? "mock" : "live"}, mockData=${state.isMockData}, graphNodes=${graphStats.nodes}, graphEdges=${graphStats.edges}, graphStats=${graphStats.summary}`);
   }
 
@@ -149,4 +169,15 @@ export class DashboardPanel {
       wroteWorkspaceFiles: false
     };
   }
+}
+
+function getRenderHash(state: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(state, (_key, value: unknown) => {
+      if (_key === "lastUpdatedIso" || _key === "capturedAtIso" || _key === "currentCapturedAtIso" || _key === "lastChangedIso") {
+        return "<volatile-time>";
+      }
+      return value;
+    }))
+    .digest("hex");
 }

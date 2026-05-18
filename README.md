@@ -47,13 +47,17 @@ The target path is a WSL UNC path, but the VS Code process must be Windows Nativ
 
 In the launched VS Code window:
 
-- Confirm no custom Live Architecture Map Activity Bar icon or sidebar tree is visible.
-- Open the dashboard from the **Live Architecture Map** Status Bar item or run **Live Architecture Map: Open Dashboard** from the Command Palette.
+- Confirm the dedicated Live Architecture Map Activity Bar icon is visible.
+- Confirm the old multi-section sidebar tree is not visible. The Activity Bar view should only show the compact dashboard launcher/status surface.
+- Confirm no **Live Architecture Map** Status Bar item is visible.
+- Open the dashboard from the Activity Bar launcher or run **Live Architecture Map: Open Dashboard** from the Command Palette.
 - Confirm the dashboard reports `Live workspace data`.
-- Confirm Python file, module, dependency, graph node/edge, unmapped module, test module, runtime module, unresolved import, changed file, git branch, git status source, scanner, path type, baseline, and updated diagnostics are visible.
+- Confirm the top header only shows the title, workspace name, mode, and data status.
+- Confirm Python file, module, dependency, graph node/edge, unclassified module, test module, runtime module, unresolved import, changed file, git branch, git status source, scanner, path type, baseline, and updated diagnostics are available in the collapsed diagnostics details panel at the bottom.
 - Confirm real workspaces do not show mock/sample nodes. If analysis fails, the dashboard should show an explicit fallback reason rather than demo graph content.
-- Confirm Whole Architecture groups any unmapped modules into one `Unmapped / Unknown` feature block with real samples.
-- Confirm Feature Focus shows runtime modules first and keeps related tests in the separate Related Tests panel.
+- Confirm Whole Architecture shows small unclassified module sets as individual `Unclassified module` nodes with real paths. For large sets it may show one `Unclassified Modules` summary node plus real top paths and reasons in diagnostics.
+- Confirm Feature Focus explains the selected feature, shows key runtime modules first, and keeps related tests in the separate Related Tests panel.
+- Confirm dashboard text can be selected and copied. Full automated selection testing is limited because VS Code webview text selection is not fully exposed to the command-line test harness; the webview now avoids replacing identical rendered state and delays watcher renders while selection is active.
 - Confirm graph controls (`+`, `-`, `Fit`) change and reset the SVG view.
 - Use **Refresh**, **Configure**, **Timeline**, **Capture Baseline**, **Diff Since Baseline**, and **Export Snapshot** from the dashboard or Command Palette.
 - Confirm no files are created in `\\wsl.localhost\Ubuntu-22.04\home\jevons\ABB_ROS2`.
@@ -138,5 +142,5 @@ Export writes JSON only after the user explicitly chooses a save path in the Sav
 
 - The scanner uses textual Python import parsing and does not execute target Python code.
 - Workspace compile, style, and test checks are reported as not run or unknown unless a future command explicitly wires them.
-- Full installed-VSIX UI validation may still require human inspection because VS Code desktop Status Bar visibility is not fully observable from command-line automation.
+- Full installed-VSIX UI validation may still require human inspection because VS Code desktop Activity Bar, Status Bar, and text-selection behavior are not fully observable from command-line automation.
 - Git status uses the VS Code Git API when available and falls back to `git status --porcelain=v1 --branch`.

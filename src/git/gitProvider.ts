@@ -67,10 +67,10 @@ async function getGitStatusFromVsCodeApi(folder: vscode.WorkspaceFolder): Promis
     ...repository.state.indexChanges,
     ...repository.state.untrackedChanges
   ];
-  const changedFiles = changes.map((change) => ({
+  const changedFiles = dedupeChangedFiles(changes.map((change) => ({
     path: normalizeRelativePath(folder.uri, change.resourceUri),
     status: mapGitApiStatus(change.type)
-  }));
+  })));
 
   return {
     source: "VS Code Git API",
@@ -99,6 +99,7 @@ function getGitStatusFromCli(cwd: string): Promise<GitStatusResult> {
       const branchLine = lines.find((line) => line.startsWith("## "));
       const branch = branchLine ? parseBranch(branchLine) : "unknown";
       const statusOutput = lines.filter((line) => !line.startsWith("## ")).join("\n");
+      logInfo(`git status raw source=CLI fallback, porcelainLines=${statusOutput.split(/\r?\n/).filter(Boolean).length}`);
       const parsed = parseGitStatusPorcelain(statusOutput, branch);
       resolve({
         source: "CLI fallback",
@@ -126,14 +127,48 @@ function normalizeRelativePath(rootUri: vscode.Uri, resourceUri: vscode.Uri): st
 function mapGitApiStatus(type: number | undefined): ChangedFile["status"] {
   switch (type) {
     case 0:
+    case 5:
       return "modified";
     case 1:
+    case 13:
+    case 15:
       return "added";
     case 2:
+    case 6:
+    case 10:
+    case 11:
+    case 14:
       return "deleted";
     case 3:
       return "renamed";
+    case 7:
+    case 9:
+      return "untracked";
+    case 12:
+    case 16:
+      return "modified";
     default:
       return "unknown";
   }
+}
+
+function dedupeChangedFiles(files: Array<Pick<ChangedFile, "path" | "status">>): Array<Pick<ChangedFile, "path" | "status">> {
+  const byPath = new Map<string, Pick<ChangedFile, "path" | "status">>();
+  const priority: Record<ChangedFile["status"], number> = {
+    modified: 5,
+    added: 6,
+    deleted: 6,
+    renamed: 6,
+    untracked: 4,
+    unknown: 1
+  };
+
+  for (const file of files) {
+    const existing = byPath.get(file.path);
+    if (!existing || priority[file.status] >= priority[existing.status]) {
+      byPath.set(file.path, file);
+    }
+  }
+
+  return [...byPath.values()].sort((left, right) => left.path.localeCompare(right.path));
 }

@@ -38,8 +38,8 @@ function snapshot(
     featureBlocks: [
       {
         id: "unmapped-unknown",
-        label: "Unmapped / Unknown",
-        description: "Unknown",
+        label: "Unclassified Modules",
+        description: "Unclassified fixture module.",
         pathPatterns: [],
         moduleIds,
         incomingEdges: 0,

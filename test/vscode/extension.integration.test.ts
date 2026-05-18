@@ -39,27 +39,39 @@ suite("Live Architecture Map VS Code integration", () => {
     }
   });
 
-  test("custom Activity Bar and Sidebar contributions are not declared", async () => {
+  test("Activity Bar launcher exists without old multi-section tree views", async () => {
     const activeExtension = requireExtension(extension);
     const packageJson = readPackageJson(activeExtension.extensionPath);
     const containers = packageJson.contributes?.viewsContainers?.activitybar ?? [];
     const liveContainer = containers.find((container: { id?: string }) => container.id === "liveArchitectureMap");
-    assert.strictEqual(liveContainer, undefined, "Activity Bar container should not be declared");
+    assert.ok(liveContainer, "Activity Bar container should be declared");
+    assert.strictEqual(liveContainer.title, "Live Architecture Map");
 
     const views = packageJson.contributes?.views?.liveArchitectureMap ?? [];
-    const sidebarView = views.find((view: { id?: string }) => view.id === "liveArchitectureMap.sidebar");
-    assert.strictEqual(sidebarView, undefined, "Sidebar view should not be declared");
+    assert.strictEqual(views.length, 1, "only the compact dashboard launcher view should be declared");
+    assert.strictEqual(views[0]?.id, "liveArchitectureMap.launcher");
+    assert.strictEqual(views[0]?.type, "webview");
+    const retiredTreeNames = [
+      "Changed Features",
+      "Changed Files",
+      "Impacted Modules",
+      "Suggested Tests",
+      "Baseline",
+      "Actions",
+      "Modes"
+    ];
+    for (const retiredName of retiredTreeNames) {
+      assert.ok(!views.some((view: { name?: string }) => view.name === retiredName), `${retiredName} tree section should not be declared`);
+    }
   });
 
-  test("Status Bar dashboard entry point is exported", () => {
+  test("Status Bar dashboard entry point is not exported", () => {
     const activeExtension = requireExtension(extension);
     const api = activeExtension.exports as {
       statusBarItem?: vscode.StatusBarItem;
     };
 
-    assert.ok(api.statusBarItem, "Status Bar item should be created");
-    assert.ok(api.statusBarItem.text.includes("Live Architecture Map"), "Status Bar item should be named Live Architecture Map");
-    assert.strictEqual(api.statusBarItem.command, commandIds.openDashboard);
+    assert.strictEqual(api.statusBarItem, undefined, "Status Bar item should not be created or exported");
   });
 
   test("Open Dashboard command creates a Webview panel", async () => {
@@ -156,7 +168,7 @@ Result: passed.
 
 Completed: ${new Date().toISOString()}
 
-Coverage: activation, command registration, package contribution removal, status bar entry point, dashboard webview command, message validation, and no inspected workspace write.
+Coverage: activation, command registration, Activity Bar launcher contribution, Status Bar removal, dashboard webview command, message validation, and no inspected workspace write.
 `,
       "utf8"
     );
@@ -171,10 +183,10 @@ function requireExtension(extension: vscode.Extension<unknown> | undefined): vsc
 function readPackageJson(extensionPath: string): {
   contributes?: {
     viewsContainers?: {
-      activitybar?: Array<{ id?: string }>;
+      activitybar?: Array<{ id?: string; title?: string; icon?: string }>;
     };
     views?: {
-      liveArchitectureMap?: Array<{ id?: string }>;
+      liveArchitectureMap?: Array<{ id?: string; name?: string; type?: string }>;
     };
   };
 } {
@@ -182,10 +194,10 @@ function readPackageJson(extensionPath: string): {
   return JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
     contributes?: {
       viewsContainers?: {
-        activitybar?: Array<{ id?: string }>;
+        activitybar?: Array<{ id?: string; title?: string; icon?: string }>;
       };
       views?: {
-        liveArchitectureMap?: Array<{ id?: string }>;
+        liveArchitectureMap?: Array<{ id?: string; name?: string; type?: string }>;
       };
     };
   };

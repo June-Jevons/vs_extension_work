@@ -1,4 +1,10 @@
-import { DependencyEdge, FeatureBlock, ModuleNode, RiskLevel } from "../webview/dashboardState";
+import {
+  ClassificationReason,
+  DependencyEdge,
+  FeatureBlock,
+  ModuleNode,
+  RiskLevel
+} from "../webview/dashboardState";
 
 export interface FeatureDefinition {
   id: string;
@@ -38,24 +44,24 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     id: "ros-bridge-runtime",
     label: "ROS / Bridge / Runtime",
     description: "ROS launch, node, bridge, and runtime integration code.",
-    pathPatterns: ["abb_ros_bridge", "ros", "launch", "node", "bridge", "runtime"],
-    keywords: ["ros", "launch", "node", "bridge", "runtime"],
+    pathPatterns: ["abb_ros_bridge", "ros", "launch", "node", "bridge", "runtime", "visualization", "marker", "rviz", "platform", "abb_platform", "mesh", "stl"],
+    keywords: ["ros", "launch", "node", "bridge", "runtime", "visualization", "marker", "rviz", "platform", "mesh", "stl"],
     defaultRisk: "medium"
   },
   {
     id: "gui-layer",
     label: "GUI Layer",
     description: "Panels, tabs, and operator-facing UI code.",
-    pathPatterns: ["gui", "operator_panel", "panel", "tab", "view", "widget", "ui"],
-    keywords: ["gui", "operator_panel", "panel", "tab", "widget", "view"],
+    pathPatterns: ["gui", "operator_panel", "operator_app", "abb_operator_app", "operator", "panel", "tab", "view", "widget", "ui"],
+    keywords: ["gui", "operator_panel", "operator_app", "operator", "panel", "tab", "widget", "view"],
     defaultRisk: "low"
   },
   {
     id: "motion-planning",
     label: "Motion Planning",
     description: "Motion builders, trajectories, poses, and path planning.",
-    pathPatterns: ["motion", "moveit", "trajectory", "pose", "path", "planner", "planning", "box_motion"],
-    keywords: ["motion", "moveit", "movej", "movel", "trajectory", "pose", "path", "planner", "box_motion"],
+    pathPatterns: ["motion", "moveit", "trajectory", "pose", "path", "planner", "planning", "box_motion", "abb_boxes", "boxes", "box", "geometry"],
+    keywords: ["motion", "moveit", "movej", "movel", "trajectory", "pose", "path", "planner", "box_motion", "boxes", "box", "geometry"],
     defaultRisk: "medium"
   },
   {
@@ -70,8 +76,8 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
     id: "robot-io-layer",
     label: "Robot I/O Layer",
     description: "Robot clients, controller APIs, RWS, EGM, and RAPID interfaces.",
-    pathPatterns: ["egm", "rws", "rapid", "robot", "controller", "abb_robot", "abb_controller", "robotware"],
-    keywords: ["egm", "rws", "rapid", "robot", "abb", "controller", "io"],
+    pathPatterns: ["egm", "rws", "rapid", "robot", "controller", "abb_robot", "abb_controller", "robotware", "abb_gripper", "gripper", "tool0", "tcp"],
+    keywords: ["egm", "rws", "rapid", "robot", "abb", "controller", "io", "gripper", "tool0", "tcp"],
     defaultRisk: "high"
   },
   {
@@ -85,40 +91,78 @@ export const BUILT_IN_FEATURES: FeatureDefinition[] = [
   {
     id: "utils-common",
     label: "Utils / Common",
-    description: "Shared helpers, common utilities, logging, and support modules.",
-    pathPatterns: ["common", "utils", "utility", "helpers", "logging"],
-    keywords: ["common", "utils", "utility", "helpers", "logging"],
+    description: "Shared helpers, common utilities, logging, math, transforms, and support modules.",
+    pathPatterns: ["common", "utils", "utility", "helpers", "logging", "math", "transform"],
+    keywords: ["common", "utils", "utility", "helpers", "logging", "math", "transform"],
     defaultRisk: "low"
   },
   {
     id: "unmapped-unknown",
-    label: "Unmapped / Unknown",
-    description: "Files that do not match built-in feature heuristics.",
+    label: "Unclassified Modules",
+    description: "Runtime modules that do not yet have a confident feature classification.",
     pathPatterns: [],
     keywords: [],
     defaultRisk: "medium"
   }
 ];
 
+export interface FeatureClassification {
+  feature: FeatureDefinition;
+  reason: ClassificationReason;
+}
+
 export function mapFeatureForPath(relativePath: string): FeatureDefinition {
+  return classifyFeatureForPath(relativePath).feature;
+}
+
+export function classifyFeatureForPath(relativePath: string): FeatureClassification {
   const normalized = normalizePath(relativePath);
   const segments = normalized.split("/");
 
   if (isTestPath(relativePath)) {
-    return getFeatureDefinition("tests");
+    return {
+      feature: getFeatureDefinition("tests"),
+      reason: {
+        category: "path-pattern-match",
+        detail: "Path is under tests or follows test naming.",
+        confidence: "high"
+      }
+    };
   }
 
+  const matches: FeatureDefinition[] = [];
   for (const feature of BUILT_IN_FEATURES) {
     if (feature.id === "unmapped-unknown" || feature.id === "tests") {
       continue;
     }
 
     if (feature.pathPatterns.some((pattern) => matchesPathPattern(normalized, segments, pattern))) {
-      return feature;
+      matches.push(feature);
     }
   }
 
-  return BUILT_IN_FEATURES[BUILT_IN_FEATURES.length - 1]!;
+  if (matches.length > 0) {
+    const feature = matches[0]!;
+    return {
+      feature,
+      reason: {
+        category: matches.length > 1 ? "ambiguous-match" : "path-pattern-match",
+        detail: matches.length > 1
+          ? `Path matched multiple feature patterns; selected ${feature.label}.`
+          : `Path matched ${feature.label} patterns.`,
+        confidence: matches.length > 1 ? "medium" : "high"
+      }
+    };
+  }
+
+  return {
+    feature: getFeatureDefinition("unmapped-unknown"),
+    reason: {
+      category: "no-path-pattern-match",
+      detail: "No built-in path pattern matched this module.",
+      confidence: "low"
+    }
+  };
 }
 
 export function inferRuntimeFeatureForTestPath(relativePath: string): FeatureDefinition | undefined {
@@ -146,9 +190,16 @@ export function inferRuntimeFeatureForTestPath(relativePath: string): FeatureDef
 }
 
 export function inferFeatureFromImports(moduleNode: ModuleNode, modulesById: ReadonlyMap<string, ModuleNode>): FeatureDefinition {
-  const pathFeature = mapFeatureForPath(moduleNode.path);
-  if (pathFeature.id !== "unmapped-unknown") {
-    return pathFeature;
+  return inferFeatureFromImportsDetailed(moduleNode, modulesById).feature;
+}
+
+export function inferFeatureFromImportsDetailed(
+  moduleNode: ModuleNode,
+  modulesById: ReadonlyMap<string, ModuleNode>
+): FeatureClassification {
+  const pathClassification = classifyFeatureForPath(moduleNode.path);
+  if (pathClassification.feature.id !== "unmapped-unknown") {
+    return pathClassification;
   }
 
   const featureCounts = new Map<string, number>();
@@ -160,8 +211,48 @@ export function inferFeatureFromImports(moduleNode: ModuleNode, modulesById: Rea
     featureCounts.set(linkedModule.featureId, (featureCounts.get(linkedModule.featureId) ?? 0) + 1);
   }
 
-  const inferredFeatureId = [...featureCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
-  return BUILT_IN_FEATURES.find((feature) => feature.id === inferredFeatureId) ?? pathFeature;
+  const ranked = [...featureCounts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  const [topFeatureId, topCount] = ranked[0] ?? [];
+  const secondCount = ranked[1]?.[1] ?? 0;
+  const linkedCount = moduleNode.imports.length + moduleNode.importedBy.length;
+  const isStrong = typeof topFeatureId === "string"
+    && typeof topCount === "number"
+    && (topCount >= 2 || (topCount === 1 && featureCounts.size === 1 && linkedCount === 1))
+    && topCount > secondCount;
+
+  if (isStrong) {
+    const feature = getFeatureDefinition(topFeatureId);
+    return {
+      feature,
+      reason: {
+        category: "import-neighbor-inference",
+        detail: `Inferred from ${topCount} resolved local import neighbor${topCount === 1 ? "" : "s"} in ${feature.label}.`,
+        confidence: "high"
+      }
+    };
+  }
+
+  if (topCount && topCount === secondCount) {
+    return {
+      feature: pathClassification.feature,
+      reason: {
+        category: "ambiguous-match",
+        detail: "Import neighbors point to multiple features with equal confidence.",
+        confidence: "low"
+      }
+    };
+  }
+
+  return {
+    feature: pathClassification.feature,
+    reason: {
+      category: "no-strong-import-neighbor-inference",
+      detail: featureCounts.size === 0
+        ? "No classified local import neighbors were available."
+        : "Import-neighbor evidence was too weak to classify this module.",
+      confidence: "low"
+    }
+  };
 }
 
 export function buildFeatureBlocks(modules: ModuleNode[], dependencies: DependencyEdge[]): FeatureBlock[] {
@@ -173,7 +264,7 @@ export function buildFeatureBlocks(modules: ModuleNode[], dependencies: Dependen
     const outgoingEdges = dependencies.filter((edge) => moduleIds.has(edge.from) && !moduleIds.has(edge.to)).length;
     const changedFileCount = featureModules.filter((moduleNode) => moduleNode.riskLevel !== "low").length;
     const description = feature.id === "unmapped-unknown" && featureModules.length > 0
-      ? `${featureModules.length} unmapped modules. Samples: ${featureModules.slice(0, 4).map((moduleNode) => moduleNode.path).join(", ")}`
+      ? `${featureModules.length} unclassified modules. Samples: ${featureModules.slice(0, 4).map((moduleNode) => moduleNode.path).join(", ")}`
       : feature.description;
 
     return {
@@ -218,9 +309,6 @@ function normalizePath(relativePath: string): string {
 function matchesPathPattern(normalizedPath: string, segments: string[], pattern: string): boolean {
   const normalizedPattern = pattern.toLowerCase();
   if (segments.includes(normalizedPattern)) {
-    return true;
-  }
-  if (normalizedPath.includes(normalizedPattern)) {
     return true;
   }
   return new RegExp(`(^|[\\W_])${escapeRegExp(normalizedPattern)}([\\W_]|$)`).test(normalizedPath);

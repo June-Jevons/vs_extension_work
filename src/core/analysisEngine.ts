@@ -20,7 +20,7 @@ import {
   WorkspaceDiagnostics,
   WorkspaceSnapshot
 } from "../webview/dashboardState";
-import { buildFeatureBlocks, getFeatureDefinition, inferFeatureFromImports, mapFeatureForPath } from "./featureMapper";
+import { buildFeatureBlocks, getFeatureDefinition, inferFeatureFromImportsDetailed, mapFeatureForPath } from "./featureMapper";
 import { buildRiskSummary, scoreChangedFileWithReason, scoreModuleRisk } from "./riskScorer";
 import { scanWorkspace } from "./workspaceScanner";
 
@@ -258,6 +258,9 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
 
     await this.snapshotStore.saveSnapshot(snapshot);
     const baseline = this.baselineStore.getBaseline(workspaceKey);
+    const unclassifiedModules = modules
+      .filter((moduleNode) => moduleNode.featureId === "unmapped-unknown")
+      .sort((left, right) => left.path.localeCompare(right.path));
     const diagnostics: WorkspaceDiagnostics = {
       rootUri: folder.uri.toString(),
       workspaceFsPath: folder.uri.fsPath,
@@ -269,7 +272,9 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       dependencyCount: graph.dependencies.length,
       graphNodeCount: featureBlocks.length,
       graphEdgeCount: countInterFeatureEdges(featureBlocks, modules, graph.dependencies),
-      unmappedModuleCount: modules.filter((moduleNode) => moduleNode.featureId === "unmapped-unknown").length,
+      unmappedModuleCount: unclassifiedModules.length,
+      unclassifiedModulePaths: unclassifiedModules.slice(0, 12).map((moduleNode) => moduleNode.path),
+      unclassifiedReasonCounts: countClassificationReasons(unclassifiedModules),
       testModuleCount: modules.filter((moduleNode) => moduleNode.isTest).length,
       runtimeModuleCount: modules.filter((moduleNode) => !moduleNode.isTest).length,
       parsedImportStatementCount: graph.diagnostics.parsedImportStatementCount,
@@ -347,6 +352,8 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
         graphNodeCount: 0,
         graphEdgeCount: 0,
         unmappedModuleCount: 0,
+        unclassifiedModulePaths: [],
+        unclassifiedReasonCounts: [],
         testModuleCount: 0,
         runtimeModuleCount: 0,
         parsedImportStatementCount: 0,
@@ -427,6 +434,8 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
         graphNodeCount: 0,
         graphEdgeCount: 0,
         unmappedModuleCount: 0,
+        unclassifiedModulePaths: [],
+        unclassifiedReasonCounts: [],
         testModuleCount: 0,
         runtimeModuleCount: 0,
         parsedImportStatementCount: 0,
@@ -462,16 +471,37 @@ function applyFeatureInference(modules: ModuleNode[], dependencies: readonly { f
     if (moduleNode.isTest) {
       return {
         ...moduleNode,
-        featureId: "tests"
+        featureId: "tests",
+        classificationReason: moduleNode.classificationReason ?? {
+          category: "path-pattern-match",
+          detail: "Path is under tests or follows test naming.",
+          confidence: "high"
+        }
       };
     }
-    const inferred = inferFeatureFromImports(moduleNode, linkedById);
+    const inferred = inferFeatureFromImportsDetailed(moduleNode, linkedById);
     const original = modulesById.get(moduleNode.id);
     return {
       ...moduleNode,
-      featureId: original?.featureId === "unmapped-unknown" ? inferred.id : original?.featureId ?? inferred.id
+      featureId: original?.featureId === "unmapped-unknown" ? inferred.feature.id : original?.featureId ?? inferred.feature.id,
+      classificationReason: original?.featureId === "unmapped-unknown"
+        ? inferred.reason
+        : original?.classificationReason ?? inferred.reason
     };
   });
+}
+
+function countClassificationReasons(
+  modules: ModuleNode[]
+): WorkspaceDiagnostics["unclassifiedReasonCounts"] {
+  const counts = new Map<WorkspaceDiagnostics["unclassifiedReasonCounts"][number]["reason"], number>();
+  for (const moduleNode of modules) {
+    const reason = moduleNode.classificationReason?.category ?? "no-path-pattern-match";
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason));
 }
 
 function countInterFeatureEdges(

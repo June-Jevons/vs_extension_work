@@ -9,7 +9,8 @@ export type WebviewToExtensionMessage =
   | { type: "showDiffSinceBaseline" }
   | { type: "exportSnapshot" }
   | { type: "configure" }
-  | { type: "focusTimeline"; available: boolean };
+  | { type: "focusTimeline"; available: boolean }
+  | { type: "selectionState"; active: boolean };
 
 export type ExtensionToWebviewMessage =
   | { type: "state"; state: DashboardState }
@@ -31,6 +32,8 @@ export function isWebviewToExtensionMessage(value: unknown): value is WebviewToE
       return true;
     case "focusTimeline":
       return typeof value.available === "boolean";
+    case "selectionState":
+      return typeof value.active === "boolean";
     case "setMode":
       return isDashboardMode(value.mode);
     case "selectFeature":

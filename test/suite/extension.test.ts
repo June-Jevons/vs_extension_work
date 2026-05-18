@@ -64,6 +64,7 @@ assert.ok(isWebviewToExtensionMessage({ type: "setMode", mode: "featureFocus" })
 assert.ok(isWebviewToExtensionMessage({ type: "selectFeature", featureId: "motion-planning" }));
 assert.ok(isWebviewToExtensionMessage({ type: "configure" }));
 assert.ok(isWebviewToExtensionMessage({ type: "focusTimeline", available: false }));
+assert.ok(isWebviewToExtensionMessage({ type: "selectionState", active: true }));
 assert.ok(!isWebviewToExtensionMessage({ type: "setMode", mode: "scanner" }));
 assert.ok(!isWebviewToExtensionMessage({ type: "selectFeature", featureId: "" }));
 
@@ -73,6 +74,7 @@ assert.ok(!liveHtml.includes("Mock validation state"), "dashboard should not con
 assert.ok(liveHtml.includes("Live workspace data"), "live state should identify live workspace data");
 assert.ok(liveHtml.includes("<strong>Mock data:</strong>false"), "live diagnostics should explicitly report Mock data: false");
 assert.ok(!/\bmock\b(?! data:<\/strong>false)/i.test(liveHtml), "live dashboard HTML should only contain mock wording in the explicit Mock data: false field");
+assert.ok(!liveHtml.includes("Unmapped / Unknown"), "live dashboard should use Unclassified Modules wording");
 for (const sampleNode of ["runtime-config", "operator-launcher", "tests-config-scanner", "launcher-subprocess-env", "ros-launch-runtime"]) {
   assert.ok(!liveHtml.includes(sampleNode), `live real-state render should not leak mock sample node ${sampleNode}`);
 }
@@ -83,6 +85,10 @@ assert.ok(liveHtml.includes("<strong>Python files:</strong>"), "diagnostics shou
 assert.ok(liveHtml.includes("<strong>Changed files:</strong>"), "diagnostics should use clear Changed files label");
 assert.ok(liveHtml.includes("<strong>Git status source:</strong>"), "diagnostics should use clear Git status source label");
 assert.ok(liveHtml.includes("<strong>Path type:</strong>"), "diagnostics should use clear Path type label");
+assert.ok(liveHtml.includes("<strong>Top unclassified paths:</strong>"), "diagnostics should include top unclassified paths");
+assert.ok(liveHtml.includes("src/misc/legacy_loader.py"), "small unclassified module sets should show real module paths");
+const liveChangesHtml = renderDashboardShell(createRealDashboardState("liveChanges"));
+assert.ok(liveChangesHtml.includes("Motion module changed."), "changed files table should render real changed-file reasons");
 
 const featureFocusHtml = renderDashboardShell(createRealDashboardState("featureFocus", "motion-planning"));
 const compositionPanel = extractTestId(featureFocusHtml, "module-composition-panel");
@@ -120,7 +126,7 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
     featureBlock("gui-layer", "GUI Layer", ["src/gui/motion_panel"], 0, 1),
     featureBlock("config-system", "Config System", ["src/config/runtime_config"], 1, 0),
     featureBlock("tests", "Tests", ["tests/test_motion_program", "tests/test_box_motion_auto_generate", "tests/test_config_loader"], 0, 2),
-    featureBlock("unmapped-unknown", "Unmapped / Unknown", ["src/misc/legacy_loader"], 0, 0, "1 unmapped modules. Samples: src/misc/legacy_loader.py")
+    featureBlock("unmapped-unknown", "Unclassified Modules", ["src/misc/legacy_loader"], 0, 0, "1 unclassified module. Sample: src/misc/legacy_loader.py")
   ];
 
   return {
@@ -208,6 +214,8 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
       graphNodeCount: featureBlocks.length,
       graphEdgeCount: 4,
       unmappedModuleCount: 1,
+      unclassifiedModulePaths: ["src/misc/legacy_loader.py"],
+      unclassifiedReasonCounts: [{ reason: "no-strong-import-neighbor-inference", count: 1 }],
       testModuleCount: 3,
       runtimeModuleCount: 5,
       parsedImportStatementCount: 4,

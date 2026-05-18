@@ -20,6 +20,7 @@
   "activationEvents": [
     "onStartupFinished",
     "onLanguage:python",
+    "onView:liveArchitectureMap.launcher",
     "onCommand:liveArchitectureMap.openDashboard",
     "onCommand:liveArchitectureMap.refresh",
     "onCommand:liveArchitectureMap.captureBaseline",
@@ -70,6 +71,24 @@
         "title": "Live Architecture Map: Clear Workspace Cache"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "liveArchitectureMap",
+          "title": "Live Architecture Map",
+          "icon": "media/codicon-map.svg"
+        }
+      ]
+    },
+    "views": {
+      "liveArchitectureMap": [
+        {
+          "id": "liveArchitectureMap.launcher",
+          "name": "Dashboard",
+          "type": "webview"
+        }
+      ]
+    },
     "configuration": {
       "title": "Live Architecture Map",
       "properties": {

@@ -1,5 +1,18 @@
 export type RiskLevel = "low" | "medium" | "high";
 
+export type ClassificationReasonCategory =
+  | "path-pattern-match"
+  | "import-neighbor-inference"
+  | "no-path-pattern-match"
+  | "no-strong-import-neighbor-inference"
+  | "ambiguous-match";
+
+export interface ClassificationReason {
+  category: ClassificationReasonCategory;
+  detail: string;
+  confidence: "low" | "medium" | "high";
+}
+
 export type DashboardMode =
   | "liveChanges"
   | "wholeArchitecture"
@@ -41,6 +54,8 @@ export interface WorkspaceDiagnostics {
   graphNodeCount: number;
   graphEdgeCount: number;
   unmappedModuleCount: number;
+  unclassifiedModulePaths: string[];
+  unclassifiedReasonCounts: Array<{ reason: ClassificationReasonCategory; count: number }>;
   testModuleCount: number;
   runtimeModuleCount: number;
   parsedImportStatementCount: number;
@@ -78,6 +93,7 @@ export interface ModuleNode {
   language: "python" | "typescript" | "json" | "markdown" | "other";
   packageName?: string;
   featureId?: string;
+  classificationReason?: ClassificationReason;
   imports: string[];
   importedBy: string[];
   isEntryPoint: boolean;
