@@ -1,0 +1,1 @@
+{"version":3,"file":"riskScorer.js","sourceRoot":"","sources":["../../src/core/riskScorer.ts"],"names":[],"mappings":";;AAEA,4BASC;AATD,SAAgB,QAAQ,CAAC,KAAgB;IACvC,QAAQ,KAAK,EAAE,CAAC;QACd,KAAK,MAAM;YACT,OAAO,CAAC,CAAC;QACX,KAAK,QAAQ;YACX,OAAO,CAAC,CAAC;QACX,KAAK,KAAK;YACR,OAAO,CAAC,CAAC;IACb,CAAC;AACH,CAAC"}
