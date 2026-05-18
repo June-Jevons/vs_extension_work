@@ -2,11 +2,15 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Live Architecture Map",
+      "name": "Run Live Architecture Map on ABB_ROS2",
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}"
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--user-data-dir=C:\\tmp\\vscode-lam-dev-user-data",
+        "--extensions-dir=C:\\tmp\\vscode-lam-dev-extensions",
+        "--disable-gpu",
+        "\\\\wsl.localhost\\Ubuntu-22.04\\home\\jevons\\ABB_ROS2"
       ],
       "outFiles": [
         "${workspaceFolder}/out/**/*.js"
