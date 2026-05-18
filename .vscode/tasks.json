@@ -2,6 +2,23 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "LAM: ensure deps and compile",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "if (!(Test-Path '.\\node_modules\\.bin\\tsc.cmd')) { npm ci }; npm run compile"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": "$tsc"
+    },
+    {
       "type": "npm",
       "script": "compile",
       "group": "build",
