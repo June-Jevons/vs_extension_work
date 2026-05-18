@@ -19,6 +19,8 @@ npm run test:vscode
 
 This is not a WSL workflow. Do not run validation from `/home/...`, Ubuntu, Remote-WSL, or a WSL-backed VS Code window.
 
+`npm run test:vscode` launches VS Code with isolated test user-data and extensions directories under `.vscode-test/isolated/` so repeated Windows test runs do not share a profile mutex.
+
 ## Visual Validation Artifacts
 
 `artifacts/` is ignored and generated during validation.

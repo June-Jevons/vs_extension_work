@@ -64,15 +64,18 @@ suite("Live Architecture Map VS Code integration", () => {
     const result = await vscode.commands.executeCommand(commandIds.openDashboard, "liveChanges") as {
       opened?: boolean;
       mode?: string;
+      panelTitle?: string;
+      viewType?: string;
+      visible?: boolean;
       wroteWorkspaceFiles?: boolean;
     };
 
     assert.strictEqual(result.opened, true);
     assert.strictEqual(result.mode, "liveChanges");
+    assert.strictEqual(result.panelTitle, "Live Architecture Map: liveChanges");
+    assert.strictEqual(result.viewType, "liveArchitectureMap.dashboard");
+    assert.strictEqual(result.visible, true);
     assert.strictEqual(result.wroteWorkspaceFiles, false);
-
-    const labels = vscode.window.tabGroups.all.flatMap((group) => group.tabs.map((tab) => tab.label));
-    assert.ok(labels.some((label) => label.includes("Live Architecture Map")), "webview tab should be open");
   });
 
   test("message protocol accepts mode switching", () => {

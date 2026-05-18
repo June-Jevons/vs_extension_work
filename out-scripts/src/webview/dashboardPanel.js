@@ -122,6 +122,10 @@ class DashboardPanel {
             opened: true,
             mode: this.state.mode,
             selectedFeatureId: this.state.selectedFeatureId,
+            panelTitle: this.panel.title,
+            viewType: this.panel.viewType,
+            visible: this.panel.visible,
+            active: this.panel.active,
             wroteWorkspaceFiles: false
         };
     }

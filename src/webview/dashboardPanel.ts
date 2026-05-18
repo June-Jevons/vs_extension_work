@@ -8,6 +8,10 @@ export interface DashboardCommandResult {
   opened: boolean;
   mode: DashboardMode;
   selectedFeatureId?: string;
+  panelTitle: string;
+  viewType: string;
+  visible: boolean;
+  active: boolean;
   wroteWorkspaceFiles: false;
 }
 
@@ -114,6 +118,10 @@ export class DashboardPanel {
       opened: true,
       mode: this.state.mode,
       selectedFeatureId: this.state.selectedFeatureId,
+      panelTitle: this.panel.title,
+      viewType: this.panel.viewType,
+      visible: this.panel.visible,
+      active: this.panel.active,
       wroteWorkspaceFiles: false
     };
   }
