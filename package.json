@@ -1,0 +1,148 @@
+{
+  "name": "live-architecture-map",
+  "displayName": "Live Architecture Map",
+  "description": "Visual architecture and change-impact dashboard for Python workspaces.",
+  "version": "0.0.1",
+  "publisher": "local-tools",
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "engines": {
+    "vscode": "^1.120.0"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:python",
+    "onView:liveArchitectureMap.sidebar",
+    "onCommand:liveArchitectureMap.openDashboard",
+    "onCommand:liveArchitectureMap.refresh",
+    "onCommand:liveArchitectureMap.captureBaseline",
+    "onCommand:liveArchitectureMap.showDiffSinceBaseline",
+    "workspaceContains:**/*.py"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "liveArchitectureMap.openDashboard",
+        "title": "Live Architecture Map: Open Dashboard"
+      },
+      {
+        "command": "liveArchitectureMap.refresh",
+        "title": "Live Architecture Map: Refresh"
+      },
+      {
+        "command": "liveArchitectureMap.captureBaseline",
+        "title": "Live Architecture Map: Capture Baseline"
+      },
+      {
+        "command": "liveArchitectureMap.showDiffSinceBaseline",
+        "title": "Live Architecture Map: Show Diff Since Baseline"
+      },
+      {
+        "command": "liveArchitectureMap.focusFeature",
+        "title": "Live Architecture Map: Focus Feature"
+      },
+      {
+        "command": "liveArchitectureMap.exportSnapshot",
+        "title": "Live Architecture Map: Export Snapshot"
+      },
+      {
+        "command": "liveArchitectureMap.clearWorkspaceCache",
+        "title": "Live Architecture Map: Clear Workspace Cache"
+      }
+    ],
+    "configuration": {
+      "title": "Live Architecture Map",
+      "properties": {
+        "liveArchitectureMap.autoWatch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Watch workspace changes and refresh the architecture map."
+        },
+        "liveArchitectureMap.autoOpenDashboard": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open the dashboard automatically when the extension activates."
+        },
+        "liveArchitectureMap.defaultModeWhenClean": {
+          "type": "string",
+          "enum": [
+            "wholeArchitecture",
+            "liveChanges"
+          ],
+          "default": "wholeArchitecture",
+          "description": "Dashboard mode to use when the workspace has no detected changes."
+        },
+        "liveArchitectureMap.defaultModeWhenDirty": {
+          "type": "string",
+          "enum": [
+            "liveChanges",
+            "wholeArchitecture"
+          ],
+          "default": "liveChanges",
+          "description": "Dashboard mode to use when the workspace has detected changes."
+        },
+        "liveArchitectureMap.maxFilesToAnalyze": {
+          "type": "number",
+          "default": 2000,
+          "description": "Maximum number of files to analyze in later scanner phases."
+        },
+        "liveArchitectureMap.excludeGlobs": {
+          "type": "array",
+          "default": [
+            "**/.git/**",
+            "**/.venv/**",
+            "**/venv/**",
+            "**/__pycache__/**",
+            "**/node_modules/**",
+            "**/build/**",
+            "**/install/**",
+            "**/log/**",
+            "**/.pytest_cache/**"
+          ],
+          "description": "Globs excluded from later scanner phases."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "liveArchitectureMap",
+          "title": "Live Architecture Map",
+          "icon": "media/codicon-map.svg"
+        }
+      ]
+    },
+    "views": {
+      "liveArchitectureMap": [
+        {
+          "id": "liveArchitectureMap.sidebar",
+          "name": "Live Architecture Map",
+          "type": "tree"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && npm run test:unit",
+    "test:unit": "tsc -p ./tsconfig.test.json && node ./out-test/test/suite/extension.test.js",
+    "visual:render": "npm run compile && tsc -p ./tsconfig.scripts.json && node ./out-scripts/scripts/render-ui-snapshots.js",
+    "visual:test": "playwright test",
+    "test:vscode": "npm run compile && tsc -p ./tsconfig.test.json && vscode-test --config ./.vscode-test.mjs",
+    "validate": "npm run compile && npm run test:unit && npm run visual:render && npm run visual:test",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0",
+    "@types/node": "24.12.4",
+    "@types/vscode": "1.120.0",
+    "@vscode/test-cli": "0.0.12",
+    "@vscode/test-electron": "2.5.2",
+    "@vscode/vsce": "3.9.1",
+    "typescript": "6.0.3"
+  }
+}
