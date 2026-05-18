@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { mapFeatureForPath } from "./featureMapper";
+import { getFeatureDefinition, isTestPath, mapFeatureForPath } from "./featureMapper";
 import { ModuleNode } from "../webview/dashboardState";
 import { ModuleImportRecord } from "../graph/dependencyGraph";
 import { parsePythonImports } from "../graph/importParser";
@@ -70,7 +70,8 @@ export async function scanWorkspace(
     const metrics = countPythonMetrics(source);
     totalClasses += metrics.classes;
     totalFunctions += metrics.functions;
-    const feature = mapFeatureForPath(relativePath);
+    const isTest = isTestPath(relativePath);
+    const feature = isTest ? getFeatureDefinition("tests") : mapFeatureForPath(relativePath);
 
     modules.push({
       id: moduleId,
@@ -82,7 +83,7 @@ export async function scanWorkspace(
       imports: [],
       importedBy: [],
       isEntryPoint: isLikelyEntryPoint(relativePath, source),
-      isTest: isTestPath(relativePath),
+      isTest,
       isOrphan: false,
       riskLevel: feature.defaultRisk
     });
@@ -226,13 +227,6 @@ function mapFileType(fileType: vscode.FileType): DirectoryEntryLike["kind"] {
     return "file";
   }
   return "other";
-}
-
-function isTestPath(relativePath: string): boolean {
-  const normalized = relativePath.toLowerCase();
-  return normalized.startsWith("tests/")
-    || normalized.includes("/tests/")
-    || normalized.split("/").some((segment) => segment.startsWith("test_") || segment.endsWith("_test.py"));
 }
 
 function countPythonMetrics(source: string): { classes: number; functions: number } {

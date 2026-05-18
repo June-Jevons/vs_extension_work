@@ -20,7 +20,6 @@
   "activationEvents": [
     "onStartupFinished",
     "onLanguage:python",
-    "onView:liveArchitectureMap.sidebar",
     "onCommand:liveArchitectureMap.openDashboard",
     "onCommand:liveArchitectureMap.refresh",
     "onCommand:liveArchitectureMap.captureBaseline",
@@ -131,24 +130,6 @@
           "description": "Globs excluded from later scanner phases."
         }
       }
-    },
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "liveArchitectureMap",
-          "title": "Live Architecture Map",
-          "icon": "media/codicon-map.svg"
-        }
-      ]
-    },
-    "views": {
-      "liveArchitectureMap": [
-        {
-          "id": "liveArchitectureMap.sidebar",
-          "name": "Live Architecture Map",
-          "type": "tree"
-        }
-      ]
     }
   },
   "scripts": {

@@ -151,8 +151,15 @@ select {
 .icon-button {
   display: inline-grid;
   place-items: center;
+  min-width: 28px;
   width: 28px;
   padding: 0;
+}
+
+.icon-button[title="Fit to view"] {
+  width: auto;
+  min-width: 34px;
+  padding: 0 6px;
 }
 
 .primary-action {
@@ -473,11 +480,36 @@ select {
   overflow: hidden;
 }
 
+.graph-empty-state,
+.graph-summary {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  z-index: 1;
+  color: var(--lam-muted);
+  pointer-events: none;
+}
+
+.graph-empty-state {
+  top: 12px;
+  padding: 8px 10px;
+  border: 1px solid rgba(59, 70, 84, 0.72);
+  border-radius: 5px;
+  background: rgba(13, 18, 25, 0.86);
+}
+
+.graph-summary {
+  bottom: 10px;
+  font-size: 12px;
+  text-align: right;
+}
+
 .graph-svg {
   display: block;
   width: 100%;
   height: 100%;
   min-height: 220px;
+  overflow: visible;
 }
 
 .feature-node rect,

@@ -61,6 +61,16 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       .catch((error: unknown) => {
         const reason = error instanceof Error ? error.message : "Unknown analysis error.";
         logInfo(`analysis error: ${reason}`);
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        if (folder) {
+          return this.createRealFallbackState(
+            requestedMode ?? this.state.mode,
+            selectedFeatureId ?? this.state.selectedFeatureId,
+            `Analysis error: ${reason}`,
+            "error",
+            folder
+          );
+        }
         return this.createMockFallbackState(
           requestedMode ?? this.state.mode,
           selectedFeatureId ?? this.state.selectedFeatureId,
@@ -186,20 +196,20 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     });
 
     if (scan.modules.length === 0) {
-      return this.createMockFallbackState(
+      return this.createRealFallbackState(
         requestedMode ?? this.state.mode,
         selectedFeatureId ?? this.state.selectedFeatureId,
         scan.fallbackReason
           ? `${scan.fallbackReason} No Python modules were discovered.`
           : "No Python modules were discovered.",
-        "mock fallback",
+        scan.scannerStatus,
         folder,
         scan.discoveredFileCount
       );
     }
 
     const graph = buildDependencyGraph(scan.modules, scan.importRecords);
-    logInfo(`import edge count=${graph.dependencies.length}`);
+    logInfo(`import edge count=${graph.dependencies.length}, parsedImports=${graph.diagnostics.parsedImportStatementCount}, unresolvedImports=${graph.diagnostics.unresolvedImportCount}`);
     const modulesWithFeatures = applyFeatureInference(graph.modules, graph.dependencies);
     const modules = modulesWithFeatures.map((moduleNode) => {
       const risk = scoreModuleRisk(moduleNode.path, moduleNode.importedBy.length);
@@ -257,6 +267,14 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       pythonFileCount: scan.totalPythonFiles,
       moduleCount: modules.length,
       dependencyCount: graph.dependencies.length,
+      graphNodeCount: featureBlocks.length,
+      graphEdgeCount: countInterFeatureEdges(featureBlocks, modules, graph.dependencies),
+      unmappedModuleCount: modules.filter((moduleNode) => moduleNode.featureId === "unmapped-unknown").length,
+      testModuleCount: modules.filter((moduleNode) => moduleNode.isTest).length,
+      runtimeModuleCount: modules.filter((moduleNode) => !moduleNode.isTest).length,
+      parsedImportStatementCount: graph.diagnostics.parsedImportStatementCount,
+      resolvedLocalEdgeCount: graph.diagnostics.resolvedLocalEdgeCount,
+      unresolvedImportCount: graph.diagnostics.unresolvedImportCount,
       changedFileCount: changedFiles.length,
       gitBranch: gitStatus.summary?.branch ?? "unknown",
       gitStatusSource: gitStatus.source,
@@ -266,7 +284,7 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       baselineCapturedAtIso: baseline?.capturedAtIso
     };
     logInfo(
-      `final state source=real, pythonFiles=${diagnostics.pythonFileCount}, modules=${diagnostics.moduleCount}, dependencies=${diagnostics.dependencyCount}, changedFiles=${diagnostics.changedFileCount}, gitBranch=${diagnostics.gitBranch}, gitStatusSource=${diagnostics.gitStatusSource}`
+      `final state source=real, mockData=false, pythonFiles=${diagnostics.pythonFileCount}, modules=${diagnostics.moduleCount}, featureBlocks=${featureBlocks.length}, unmappedModules=${diagnostics.unmappedModuleCount}, testModules=${diagnostics.testModuleCount}, runtimeModules=${diagnostics.runtimeModuleCount}, dependencies=${diagnostics.dependencyCount}, graphEdges=${diagnostics.graphEdgeCount}, parsedImports=${diagnostics.parsedImportStatementCount}, unresolvedImports=${diagnostics.unresolvedImportCount}, changedFiles=${diagnostics.changedFileCount}, gitBranch=${diagnostics.gitBranch}, gitStatusSource=${diagnostics.gitStatusSource}`
     );
 
     return {
@@ -326,6 +344,14 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
         pythonFileCount: 0,
         moduleCount: 0,
         dependencyCount: 0,
+        graphNodeCount: 0,
+        graphEdgeCount: 0,
+        unmappedModuleCount: 0,
+        testModuleCount: 0,
+        runtimeModuleCount: 0,
+        parsedImportStatementCount: 0,
+        resolvedLocalEdgeCount: 0,
+        unresolvedImportCount: 0,
         changedFileCount: 0,
         gitBranch: "unknown",
         gitStatusSource: "unavailable",
@@ -341,6 +367,86 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     logInfo(`final state source=mock, fallbackReason=${fallbackReason}`);
     return state;
   }
+
+  private createRealFallbackState(
+    mode: DashboardMode,
+    selectedFeatureId: string | undefined,
+    fallbackReason: string,
+    scannerStatus: ScannerStatus,
+    folder: vscode.WorkspaceFolder,
+    discoveredFileCount = 0
+  ): DashboardState {
+    const capturedAtIso = new Date().toISOString();
+    const workspaceKey = createWorkspaceKey({
+      name: folder.name,
+      rootUri: folder.uri.toString()
+    });
+    const snapshot: WorkspaceSnapshot = {
+      workspaceKey,
+      workspaceName: folder.name,
+      rootUri: folder.uri.toString(),
+      capturedAtIso,
+      modules: [],
+      dependencies: [],
+      featureBlocks: [],
+      changedFiles: [],
+      impactedFeatures: [],
+      risks: buildRiskSummary([]),
+      health: {
+        totalPythonFiles: 0,
+        totalModules: 0,
+        totalClasses: 0,
+        totalFunctions: 0,
+        circularDependencyCount: 0,
+        highRiskModuleCount: 0,
+        orphanModuleCount: 0,
+        estimatedTestCoverage: 0
+      },
+      validations: buildValidationStatuses([])
+    };
+    const state: DashboardState = {
+      mode,
+      workspace: {
+        name: folder.name,
+        rootUri: folder.uri.toString(),
+        isDirty: false,
+        lastUpdatedIso: capturedAtIso,
+        autoRefresh: true
+      },
+      snapshot,
+      selectedFeatureId,
+      diagnostics: {
+        rootUri: folder.uri.toString(),
+        workspaceFsPath: folder.uri.fsPath,
+        pathKind: describePathKind(folder.uri.fsPath),
+        stateSource: "real",
+        fallbackReason,
+        pythonFileCount: 0,
+        moduleCount: 0,
+        dependencyCount: 0,
+        graphNodeCount: 0,
+        graphEdgeCount: 0,
+        unmappedModuleCount: 0,
+        testModuleCount: 0,
+        runtimeModuleCount: 0,
+        parsedImportStatementCount: 0,
+        resolvedLocalEdgeCount: 0,
+        unresolvedImportCount: 0,
+        changedFileCount: 0,
+        gitBranch: "unknown",
+        gitStatusSource: "unavailable",
+        scannerStatus,
+        discoveredFileCount,
+        lastUpdatedIso: capturedAtIso,
+        baselineCapturedAtIso: undefined
+      },
+      isMockData: false,
+      isLoading: false,
+      error: fallbackReason
+    };
+    logInfo(`final state source=real, mockData=false, fallbackReason=${fallbackReason}, discoveredFiles=${discoveredFileCount}`);
+    return state;
+  }
 }
 
 function applyFeatureInference(modules: ModuleNode[], dependencies: readonly { from: string; to: string }[]): ModuleNode[] {
@@ -353,6 +459,12 @@ function applyFeatureInference(modules: ModuleNode[], dependencies: readonly { f
   const linkedById = new Map(linkedModules.map((moduleNode) => [moduleNode.id, moduleNode]));
 
   return linkedModules.map((moduleNode) => {
+    if (moduleNode.isTest) {
+      return {
+        ...moduleNode,
+        featureId: "tests"
+      };
+    }
     const inferred = inferFeatureFromImports(moduleNode, linkedById);
     const original = modulesById.get(moduleNode.id);
     return {
@@ -360,6 +472,27 @@ function applyFeatureInference(modules: ModuleNode[], dependencies: readonly { f
       featureId: original?.featureId === "unmapped-unknown" ? inferred.id : original?.featureId ?? inferred.id
     };
   });
+}
+
+function countInterFeatureEdges(
+  featureBlocks: FeatureBlock[],
+  modules: ModuleNode[],
+  dependencies: readonly { from: string; to: string }[]
+): number {
+  const featureIds = new Set(featureBlocks.map((feature) => feature.id));
+  const moduleFeatureById = new Map(modules.map((moduleNode) => [moduleNode.id, moduleNode.featureId]));
+  const edgeKeys = new Set<string>();
+
+  for (const edge of dependencies) {
+    const fromFeature = moduleFeatureById.get(edge.from);
+    const toFeature = moduleFeatureById.get(edge.to);
+    if (!fromFeature || !toFeature || fromFeature === toFeature || !featureIds.has(fromFeature) || !featureIds.has(toFeature)) {
+      continue;
+    }
+    edgeKeys.add(`${fromFeature}->${toFeature}`);
+  }
+
+  return edgeKeys.size;
 }
 
 function buildChangedFiles(

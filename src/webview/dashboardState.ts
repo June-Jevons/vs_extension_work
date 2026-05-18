@@ -38,6 +38,14 @@ export interface WorkspaceDiagnostics {
   pythonFileCount: number;
   moduleCount: number;
   dependencyCount: number;
+  graphNodeCount: number;
+  graphEdgeCount: number;
+  unmappedModuleCount: number;
+  testModuleCount: number;
+  runtimeModuleCount: number;
+  parsedImportStatementCount: number;
+  resolvedLocalEdgeCount: number;
+  unresolvedImportCount: number;
   changedFileCount: number;
   gitBranch: string;
   gitStatusSource: GitStatusSource;

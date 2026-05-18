@@ -6,11 +6,11 @@ import { BaselineStore } from "./storage/baselineStore";
 import { SnapshotStore } from "./storage/snapshotStore";
 import { DashboardMode, isDashboardMode } from "./webview/dashboardState";
 import { DashboardPanel } from "./webview/dashboardPanel";
-import { LiveArchitectureSidebarProvider } from "./tree/sidebarProvider";
 import { WorkspaceWatcher } from "./watchers/workspaceWatcher";
+import { commandIds } from "./commands/commands";
 
 export interface LiveArchitectureMapApi {
-  sidebarProvider: LiveArchitectureSidebarProvider;
+  statusBarItem: vscode.StatusBarItem;
   stateManager: LiveArchitectureStateManager;
 }
 
@@ -29,15 +29,20 @@ export function activate(context: vscode.ExtensionContext): LiveArchitectureMapA
   const snapshotStore = new SnapshotStore(context);
   const baselineStore = new BaselineStore(context);
   const stateManager = new LiveArchitectureStateManager(context, snapshotStore, baselineStore);
-  const sidebarProvider = new LiveArchitectureSidebarProvider(stateManager);
   const watcher = new WorkspaceWatcher(stateManager);
+  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  statusBarItem.name = "Live Architecture Map";
+  statusBarItem.text = "$(map) Live Architecture Map";
+  statusBarItem.tooltip = "Open Live Architecture Map dashboard";
+  statusBarItem.command = commandIds.openDashboard;
+  statusBarItem.show();
 
   context.subscriptions.push(
     outputChannel,
     stateManager,
     watcher,
-    vscode.window.registerTreeDataProvider("liveArchitectureMap.sidebar", sidebarProvider),
-    ...registerLiveArchitectureCommands(context, sidebarProvider, stateManager)
+    statusBarItem,
+    ...registerLiveArchitectureCommands(context, stateManager)
   );
 
   watcher.start();
@@ -54,7 +59,7 @@ export function activate(context: vscode.ExtensionContext): LiveArchitectureMapA
   }
 
   return {
-    sidebarProvider,
+    statusBarItem,
     stateManager
   };
 }

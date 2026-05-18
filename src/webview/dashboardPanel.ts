@@ -5,6 +5,7 @@ import { logInfo } from "../core/outputChannel";
 import { DashboardMode } from "./dashboardState";
 import { getDashboardWebviewHtml, getNonce } from "./html";
 import { isWebviewToExtensionMessage } from "./messageProtocol";
+import { getGraphStatsForMode } from "./renderers";
 
 export interface DashboardCommandResult {
   opened: boolean;
@@ -129,9 +130,10 @@ export class DashboardPanel {
 
   private render(): void {
     const state = this.stateManager.getState();
+    const graphStats = getGraphStatsForMode(state);
     this.panel.title = `Live Architecture Map: ${state.mode}`;
     this.panel.webview.html = getDashboardWebviewHtml(this.panel.webview, state, getNonce());
-    logInfo(`dashboard render: title=${this.panel.title}, subtitleSource=${state.isMockData ? "mock" : "live"}`);
+    logInfo(`dashboard render: title=${this.panel.title}, subtitleSource=${state.isMockData ? "mock" : "live"}, mockData=${state.isMockData}, graphNodes=${graphStats.nodes}, graphEdges=${graphStats.edges}, graphStats=${graphStats.summary}`);
   }
 
   private getCommandResult(): DashboardCommandResult {

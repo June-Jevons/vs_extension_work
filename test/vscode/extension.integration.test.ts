@@ -4,7 +4,6 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { commandIds } from "../../src/commands/commands";
 import { isWebviewToExtensionMessage } from "../../src/webview/messageProtocol";
-import { LiveArchitectureSidebarProvider, REQUIRED_ROOT_SECTIONS } from "../../src/tree/sidebarProvider";
 
 declare const suite: (name: string, callback: () => void) => void;
 declare const test: (name: string, callback: () => Promise<void> | void) => void;
@@ -40,26 +39,27 @@ suite("Live Architecture Map VS Code integration", () => {
     }
   });
 
-  test("Activity Bar and Sidebar contributions are declared", async () => {
+  test("custom Activity Bar and Sidebar contributions are not declared", async () => {
     const activeExtension = requireExtension(extension);
     const packageJson = readPackageJson(activeExtension.extensionPath);
     const containers = packageJson.contributes?.viewsContainers?.activitybar ?? [];
     const liveContainer = containers.find((container: { id?: string }) => container.id === "liveArchitectureMap");
-    assert.ok(liveContainer, "Activity Bar container should be declared");
+    assert.strictEqual(liveContainer, undefined, "Activity Bar container should not be declared");
 
     const views = packageJson.contributes?.views?.liveArchitectureMap ?? [];
     const sidebarView = views.find((view: { id?: string }) => view.id === "liveArchitectureMap.sidebar");
-    assert.ok(sidebarView, "Sidebar view should be declared");
+    assert.strictEqual(sidebarView, undefined, "Sidebar view should not be declared");
   });
 
-  test("Sidebar provider exposes required root sections", () => {
-    const provider = new LiveArchitectureSidebarProvider();
-    const rootItems = provider.getChildren();
-    const labels = rootItems.map((item) => item.label);
+  test("Status Bar dashboard entry point is exported", () => {
+    const activeExtension = requireExtension(extension);
+    const api = activeExtension.exports as {
+      statusBarItem?: vscode.StatusBarItem;
+    };
 
-    for (const section of REQUIRED_ROOT_SECTIONS) {
-      assert.ok(labels.includes(section), `${section} should be exposed`);
-    }
+    assert.ok(api.statusBarItem, "Status Bar item should be created");
+    assert.ok(api.statusBarItem.text.includes("Live Architecture Map"), "Status Bar item should be named Live Architecture Map");
+    assert.strictEqual(api.statusBarItem.command, commandIds.openDashboard);
   });
 
   test("Open Dashboard command creates a Webview panel", async () => {
@@ -156,7 +156,7 @@ Result: passed.
 
 Completed: ${new Date().toISOString()}
 
-Coverage: activation, command registration, package contributions, sidebar roots, dashboard webview command, message validation, and no inspected workspace write.
+Coverage: activation, command registration, package contribution removal, status bar entry point, dashboard webview command, message validation, and no inspected workspace write.
 `,
       "utf8"
     );

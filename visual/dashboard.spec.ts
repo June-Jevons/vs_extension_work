@@ -120,6 +120,24 @@ for (const target of visualTargets) {
       expect(graphBox?.height ?? 0).toBeGreaterThan(120);
     }
 
+    const graphPanels = page.locator("[data-graph-panel]");
+    const graphPanelCount = await graphPanels.count();
+    expect(graphPanelCount, "graph panels with visible controls should exist").toBeGreaterThan(0);
+    for (let index = 0; index < graphPanelCount; index += 1) {
+      const panel = graphPanels.nth(index);
+      const svg = panel.locator("svg.graph-svg").first();
+      await expect(svg, `graph panel ${index} should contain an SVG`).toBeVisible();
+      const initialViewBox = await svg.getAttribute("viewBox");
+      await panel.locator("[data-graph-action='zoom-in']").first().click();
+      const zoomedInViewBox = await svg.getAttribute("viewBox");
+      expect(zoomedInViewBox, `graph panel ${index} zoom in should change viewBox`).not.toBe(initialViewBox);
+      await panel.locator("[data-graph-action='zoom-out']").first().click();
+      const zoomedOutViewBox = await svg.getAttribute("viewBox");
+      expect(zoomedOutViewBox, `graph panel ${index} zoom out should change viewBox`).not.toBe(zoomedInViewBox);
+      await panel.locator("[data-graph-action='reset']").first().click();
+      await expect(svg, `graph panel ${index} reset should restore fit viewBox`).toHaveAttribute("viewBox", initialViewBox ?? "");
+    }
+
     await page.screenshot({
       path: path.join(uiRoot, target.screenshot),
       fullPage: true

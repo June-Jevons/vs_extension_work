@@ -3,29 +3,25 @@ import { LiveArchitectureStateManager } from "../core/analysisEngine";
 import { DashboardMode, isDashboardMode } from "../webview/dashboardState";
 import { DashboardPanel } from "../webview/dashboardPanel";
 import { exportSnapshotAsJson, ExportSnapshotOptions } from "../storage/exportSnapshot";
-import { LiveArchitectureSidebarProvider } from "../tree/sidebarProvider";
 import { commandIds } from "./commands";
 
 export function registerLiveArchitectureCommands(
   context: vscode.ExtensionContext,
-  sidebarProvider: LiveArchitectureSidebarProvider,
   stateManager: LiveArchitectureStateManager
 ): vscode.Disposable[] {
   return [
     vscode.commands.registerCommand(commandIds.openDashboard, async (mode?: unknown) => {
       const dashboardMode = normalizeMode(mode);
       await stateManager.refresh(dashboardMode);
-      return DashboardPanel.show(context, stateManager);
+      return DashboardPanel.show(context, stateManager, dashboardMode);
     }),
     vscode.commands.registerCommand(commandIds.refresh, async () => {
       const currentMode = stateManager.getState().mode;
       const result = await DashboardPanel.refresh(context, stateManager, currentMode);
-      sidebarProvider.refresh();
       return result;
     }),
     vscode.commands.registerCommand(commandIds.captureBaseline, async () => {
       const result = await stateManager.captureBaseline();
-      sidebarProvider.refresh();
       const dashboard = DashboardPanel.show(context, stateManager);
       return {
         ...result,
@@ -34,7 +30,6 @@ export function registerLiveArchitectureCommands(
     }),
     vscode.commands.registerCommand(commandIds.showDiffSinceBaseline, async () => {
       await stateManager.refresh("diffSinceBaseline");
-      sidebarProvider.refresh();
       return DashboardPanel.show(context, stateManager);
     }),
     vscode.commands.registerCommand(commandIds.focusFeature, async (featureId?: unknown) => {
@@ -76,7 +71,6 @@ export function registerLiveArchitectureCommands(
     }),
     vscode.commands.registerCommand(commandIds.clearWorkspaceCache, async () => {
       const result = await stateManager.clearWorkspaceCache();
-      sidebarProvider.refresh();
       return result;
     }),
     vscode.commands.registerCommand(commandIds.openWorkspaceFile, async (relativePath?: unknown) => {

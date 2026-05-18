@@ -6,19 +6,33 @@ export interface ModuleImportRecord {
   imports: ParsedImport[];
 }
 
+export interface DependencyGraphDiagnostics {
+  parsedImportStatementCount: number;
+  resolvedLocalEdgeCount: number;
+  unresolvedImportCount: number;
+  topIncoming: Array<{ moduleId: string; count: number }>;
+  topOutgoing: Array<{ moduleId: string; count: number }>;
+}
+
 export function buildDependencyGraph(
   modules: ModuleNode[],
   importRecords: ModuleImportRecord[]
-): { modules: ModuleNode[]; dependencies: DependencyEdge[] } {
+): { modules: ModuleNode[]; dependencies: DependencyEdge[]; diagnostics: DependencyGraphDiagnostics } {
   const moduleIds = new Set(modules.map((moduleNode) => moduleNode.id));
   const dependencies: DependencyEdge[] = [];
   const importsByModule = new Map<string, string[]>();
   const importedByModule = new Map<string, string[]>();
+  let unresolvedImportCount = 0;
+  let parsedImportStatementCount = 0;
 
   for (const record of importRecords) {
     for (const parsedImport of record.imports) {
-      const resolved = resolveLocalImport(parsedImport.module, moduleIds);
+      parsedImportStatementCount += 1;
+      const resolved = resolveLocalImport(parsedImport, moduleIds, record.moduleId);
       if (!resolved || resolved === record.moduleId) {
+        if (!resolved) {
+          unresolvedImportCount += 1;
+        }
         continue;
       }
 
@@ -50,9 +64,18 @@ export function buildDependencyGraph(
     };
   });
 
+  const uniqueDependencies = uniqueEdges(dependencies);
+
   return {
     modules: updatedModules,
-    dependencies: uniqueEdges(dependencies)
+    dependencies: uniqueDependencies,
+    diagnostics: {
+      parsedImportStatementCount,
+      resolvedLocalEdgeCount: uniqueDependencies.length,
+      unresolvedImportCount,
+      topIncoming: topCounts(importedByModule),
+      topOutgoing: topCounts(importsByModule)
+    }
   };
 }
 
@@ -85,4 +108,14 @@ function uniqueEdges(edges: DependencyEdge[]): DependencyEdge[] {
     uniqueList.push(edge);
   }
   return uniqueList;
+}
+
+function topCounts(valuesByModule: ReadonlyMap<string, string[]>): Array<{ moduleId: string; count: number }> {
+  return [...valuesByModule.entries()]
+    .map(([moduleId, values]) => ({
+      moduleId,
+      count: unique(values).length
+    }))
+    .sort((left, right) => right.count - left.count || left.moduleId.localeCompare(right.moduleId))
+    .slice(0, 5);
 }
