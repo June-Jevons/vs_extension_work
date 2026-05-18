@@ -38,13 +38,13 @@ const vscode = __importStar(require("vscode"));
 const dashboardState_1 = require("../webview/dashboardState");
 const treeItems_1 = require("./treeItems");
 const rootSections = [
-    { id: "modes", label: "Modes" },
     { id: "changedFeatures", label: "Changed Features", count: (state) => state.ui.impactedFeatures.filter((feature) => feature.changedFileCount > 0).length },
     { id: "changedFiles", label: "Changed Files", count: (state) => state.ui.changedFiles.length },
     { id: "impactedModules", label: "Impacted Modules", count: (state) => state.snapshot.modules.filter((module) => module.featureId && ["config-system", "operator-startup", "launcher-env", "ros-runtime"].includes(module.featureId)).length },
     { id: "suggestedTests", label: "Suggested Tests", count: (state) => state.ui.suggestedTests.length },
     { id: "baseline", label: "Baseline" },
-    { id: "actions", label: "Actions" }
+    { id: "actions", label: "Actions" },
+    { id: "modes", label: "Modes" }
 ];
 class SidebarProvider {
     state;

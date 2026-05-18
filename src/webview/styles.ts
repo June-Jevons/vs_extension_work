@@ -51,6 +51,7 @@ export function getDashboardStyles(): string {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
       padding: 6px 8px;
       gap: 10px;
     }
@@ -62,6 +63,17 @@ export function getDashboardStyles(): string {
       flex-wrap: wrap;
     }
 
+    .mode-tabs {
+      min-width: 0;
+      flex: 1 1 520px;
+    }
+
+    .toolbar {
+      flex: 0 1 auto;
+      justify-content: flex-end;
+      margin-left: auto;
+    }
+
     .mode-tab, .toolbar-button, .mini-button {
       color: var(--lam-text);
       background: transparent;
@@ -69,6 +81,7 @@ export function getDashboardStyles(): string {
       border-radius: 5px;
       padding: 5px 8px;
       cursor: pointer;
+      white-space: nowrap;
     }
 
     .mode-tab:hover, .toolbar-button:hover, .mini-button:hover {
@@ -621,6 +634,20 @@ export function getDashboardStyles(): string {
     }
 
     @media (max-width: 1200px) {
+      .topbar {
+        align-items: flex-start;
+      }
+
+      .mode-tabs {
+        flex-basis: 100%;
+      }
+
+      .toolbar {
+        width: 100%;
+        justify-content: flex-start;
+        margin-left: 0;
+      }
+
       .live-summary, .lower-grid, .mode-grid, .feature-grid, .feature-bottom-grid, .diff-grid {
         grid-template-columns: 1fr;
       }

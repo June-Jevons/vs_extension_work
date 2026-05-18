@@ -2,16 +2,16 @@ import * as vscode from "vscode";
 import { DashboardMode, DashboardState, dashboardModes } from "../webview/dashboardState";
 import { ArchitectureTreeItem } from "./treeItems";
 
-type RootSection = "modes" | "changedFeatures" | "changedFiles" | "impactedModules" | "suggestedTests" | "baseline" | "actions";
+type RootSection = "changedFeatures" | "changedFiles" | "impactedModules" | "suggestedTests" | "baseline" | "actions" | "modes";
 
 const rootSections: { id: RootSection; label: string; count?: (state: DashboardState) => number }[] = [
-  { id: "modes", label: "Modes" },
   { id: "changedFeatures", label: "Changed Features", count: (state) => state.ui.impactedFeatures.filter((feature) => feature.changedFileCount > 0).length },
   { id: "changedFiles", label: "Changed Files", count: (state) => state.ui.changedFiles.length },
   { id: "impactedModules", label: "Impacted Modules", count: (state) => state.snapshot.modules.filter((module) => module.featureId && ["config-system", "operator-startup", "launcher-env", "ros-runtime"].includes(module.featureId)).length },
   { id: "suggestedTests", label: "Suggested Tests", count: (state) => state.ui.suggestedTests.length },
   { id: "baseline", label: "Baseline" },
-  { id: "actions", label: "Actions" }
+  { id: "actions", label: "Actions" },
+  { id: "modes", label: "Modes" }
 ];
 
 export class SidebarProvider implements vscode.TreeDataProvider<ArchitectureTreeItem> {
