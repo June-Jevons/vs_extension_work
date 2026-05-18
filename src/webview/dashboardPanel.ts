@@ -110,7 +110,7 @@ export class DashboardPanel {
         await this.stateManager.captureBaseline();
         return;
       case "showDiffSinceBaseline":
-        this.stateManager.setMode("diffSinceBaseline");
+        await this.stateManager.refresh("diffSinceBaseline");
         return;
       case "refresh":
         await this.stateManager.refresh(this.stateManager.getState().mode);

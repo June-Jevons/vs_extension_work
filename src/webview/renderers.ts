@@ -45,32 +45,35 @@ export function renderTopToolbar(state: DashboardState): string {
 export function renderWorkspaceDiagnosticsPanel(state: DashboardState): string {
   const diagnostics = state.diagnostics;
   const sourceLabel = state.isMockData ? "Mock data" : "Live workspace data";
-  const syntheticLabel = state.isMockData ? "isMockData" : "Synthetic data";
-  const fallback = diagnostics.fallbackReason
-    ? `<span><strong>Fallback</strong>${escapeHtml(diagnostics.fallbackReason)}</span>`
+  const fallback = state.isMockData && diagnostics.fallbackReason
+    ? renderDiagnosticItem("Fallback", diagnostics.fallbackReason)
     : "";
   const baseline = diagnostics.baselineCapturedAtIso
-    ? `<span><strong>Baseline</strong>${escapeHtml(formatDateTime(diagnostics.baselineCapturedAtIso))}</span>`
-    : `<span><strong>Baseline</strong>Not captured</span>`;
+    ? formatDateTime(diagnostics.baselineCapturedAtIso)
+    : "Not captured";
 
   return `
     <section class="diagnostics-panel" data-testid="workspace-diagnostics-panel" aria-label="Workspace diagnostics">
-      <span><strong>Workspace</strong>${escapeHtml(diagnostics.rootUri)}</span>
-      <span><strong>Source</strong>${escapeHtml(sourceLabel)}</span>
-      <span><strong>${escapeHtml(syntheticLabel)}</strong>${state.isMockData ? "true" : "false"}</span>
-      <span><strong>Python</strong>${diagnostics.pythonFileCount}</span>
-      <span><strong>Modules</strong>${diagnostics.moduleCount}</span>
-      <span><strong>Dependencies</strong>${diagnostics.dependencyCount}</span>
-      <span><strong>Changed</strong>${diagnostics.changedFileCount}</span>
-      <span><strong>Branch</strong>${escapeHtml(diagnostics.gitBranch)}</span>
-      <span><strong>Git</strong>${escapeHtml(diagnostics.gitStatusSource)}</span>
-      <span><strong>Scanner</strong>${escapeHtml(diagnostics.scannerStatus)}</span>
-      <span><strong>Path</strong>${escapeHtml(formatPathKind(diagnostics.pathKind))}</span>
-      ${baseline}
-      <span><strong>Updated</strong>${escapeHtml(formatDateTime(diagnostics.lastUpdatedIso))}</span>
+      ${renderDiagnosticItem("Workspace", diagnostics.rootUri)}
+      ${renderDiagnosticItem("Source", sourceLabel)}
+      ${renderDiagnosticItem("Mock data", state.isMockData ? "true" : "false")}
+      ${renderDiagnosticItem("Python files", diagnostics.pythonFileCount)}
+      ${renderDiagnosticItem("Modules", diagnostics.moduleCount)}
+      ${renderDiagnosticItem("Dependencies", diagnostics.dependencyCount)}
+      ${renderDiagnosticItem("Changed files", diagnostics.changedFileCount)}
+      ${renderDiagnosticItem("Git branch", diagnostics.gitBranch)}
+      ${renderDiagnosticItem("Git status source", diagnostics.gitStatusSource)}
+      ${renderDiagnosticItem("Scanner", diagnostics.scannerStatus)}
+      ${renderDiagnosticItem("Path type", formatPathKind(diagnostics.pathKind))}
+      ${renderDiagnosticItem("Baseline", baseline)}
+      ${renderDiagnosticItem("Updated", formatDateTime(diagnostics.lastUpdatedIso))}
       ${fallback}
     </section>
   `;
+}
+
+function renderDiagnosticItem(label: string, value: number | string): string {
+  return `<span><strong>${escapeHtml(label)}:</strong>${escapeHtml(String(value))}</span>`;
 }
 
 export function renderModeTabs(state: DashboardState): string {

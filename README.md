@@ -1,6 +1,6 @@
 # Live Architecture Map
 
-Live Architecture Map is a Windows Native VS Code extension foundation for a visual architecture and change-impact dashboard for Python and ROS2-style workspaces.
+Live Architecture Map is a Windows Native VS Code extension for visually inspecting Python and ROS2-style workspaces. It renders a real VS Code Activity Bar view, sidebar tree, and editor webview dashboard with live workspace scanning, git status, baselines, and baseline diffs.
 
 This repository is the extension project. It is not a script inside the inspected workspace.
 
@@ -12,6 +12,7 @@ Run from PowerShell:
 cd C:\Users\Junekim\Work\99.vs_workspace\vs_extension_work
 npm install
 npm run compile
+npm run test:unit
 npm run visual:render
 npm run visual:test
 npm run test:vscode
@@ -19,38 +20,17 @@ npm run validate
 npm run package
 ```
 
-This is not a WSL workflow. Do not run validation from `/home/...`, Ubuntu, Remote-WSL, or a WSL-backed VS Code window.
+This is not a WSL workflow. Do not run implementation or validation from `/home/...`, Ubuntu, Remote-WSL, or a WSL-backed VS Code window.
 
-`npm run test:vscode` launches VS Code with isolated test user-data and extensions directories under `.vscode-test/isolated/` so repeated Windows test runs do not share a profile mutex.
+Use Windows Native VS Code through:
 
-## Visual Validation Artifacts
-
-`artifacts/` is ignored and generated during validation.
-
-Generated standalone HTML and screenshots are written under:
-
-```text
-artifacts/ui/
+```powershell
+& "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd"
 ```
 
-Open the generated `.png` files to inspect the dashboard modes:
+## Run From Source
 
-```text
-artifacts/ui/live-changes.png
-artifacts/ui/whole-architecture.png
-artifacts/ui/feature-focus.png
-artifacts/ui/diff-since-baseline.png
-```
-
-The validation report is written to:
-
-```text
-artifacts/validation-report.md
-```
-
-## Extension Development Host
-
-Run the extension against the inspected Python workspace with isolated VS Code state from Windows Native VS Code:
+Launch the Extension Development Host against the ABB_ROS2 UNC workspace from Windows Native VS Code:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd" "\\wsl.localhost\Ubuntu-22.04\home\jevons\ABB_ROS2" `
@@ -61,46 +41,98 @@ Run the extension against the inspected Python workspace with isolated VS Code s
   --disable-gpu
 ```
 
-The ABB_ROS2 target path is a WSL UNC path, but it must be opened from Windows Native VS Code. Do not use Remote-WSL for validation.
+The target path is a WSL UNC path, but the VS Code process must be Windows Native. Do not use Remote-WSL for this validation.
 
-The inspected workspace is read-only by default. The extension uses read-only scanning plus extension-managed storage and does not write `.vscode/settings.json`, `architecture/`, `docs/live/`, metadata, caches, source files, tests, or git state into the inspected workspace.
+## Validate ABB_ROS2
 
-## Real Workspace Behavior
+In the launched VS Code window:
 
-Open **Live Architecture Map: Open Dashboard** from the Command Palette or the Activity Bar view. The dashboard subtitle reports one of:
-
-- `Live workspace data` when the scanner found real Python modules.
-- `Loading workspace data` while refresh is running.
-- `Analysis error` if analysis fails.
-- `Mock data` only when the extension is using its bundled fallback/sample state.
-
-The diagnostics strip shows the workspace URI, source, Python file count, module count, dependency count, changed file count, git branch, git status source, scanner status, fallback reason, baseline timestamp, and last updated time.
+- Confirm the Live Architecture Map Activity Bar icon and sidebar are visible.
+- Run **Live Architecture Map: Open Dashboard** from the Command Palette.
+- Confirm the dashboard reports `Live workspace data`.
+- Confirm Python file, module, dependency, changed file, git branch, git status source, scanner, path type, baseline, and updated diagnostics are visible.
+- Use **Refresh**, **Configure**, **Timeline**, **Capture Baseline**, **Diff Since Baseline**, and **Export Snapshot** from the dashboard or Command Palette.
+- Confirm no files are created in `\\wsl.localhost\Ubuntu-22.04\home\jevons\ABB_ROS2`.
 
 Open **View: Toggle Output**, choose **Live Architecture Map**, and inspect activation, workspace path, UNC/WSL detection, scanner counts, git source, changed file count, and fallback reasons.
 
-## Toolbar Actions
+## Visual Artifacts
 
-- **Refresh** rescans the active workspace and updates the sidebar and dashboard.
-- **Export** opens a Save Dialog and writes the current snapshot as JSON only after you choose a destination. The default export location is outside the inspected workspace.
-- **Configure** opens VS Code settings filtered to `liveArchitectureMap`.
-- **Timeline** focuses the structural timeline when it is visible, or explains that it appears in Diff Since Baseline mode after a baseline exists.
-- **Capture Baseline** stores the baseline in extension-managed VS Code storage only.
-- **Clear Workspace Cache** clears extension-owned cached snapshot/baseline state only.
+`artifacts/` is ignored and generated during validation.
 
-## Baselines and Diffs
+Generate standalone dashboard HTML:
 
-Use **Live Architecture Map: Capture Baseline** to capture the current architecture snapshot. It is stored via VS Code extension storage, not in the inspected repository. **Diff Since Baseline** compares the current snapshot against that baseline and shows added, removed, and changed modules and dependencies where the scanner can infer them.
+```powershell
+npm run visual:render
+```
 
-## Package and Install
+Run Playwright visual checks and screenshots:
 
-Build a VSIX:
+```powershell
+npm run visual:test
+```
+
+Inspect:
+
+```text
+artifacts/ui/live-changes.html
+artifacts/ui/whole-architecture.html
+artifacts/ui/feature-focus.html
+artifacts/ui/diff-since-baseline.html
+artifacts/ui/live-changes.png
+artifacts/ui/whole-architecture.png
+artifacts/ui/feature-focus.png
+artifacts/ui/diff-since-baseline.png
+artifacts/validation-report.md
+```
+
+## Package VSIX
+
+Build the installable extension:
 
 ```powershell
 npm run package
 ```
 
-Install the generated VSIX:
+The generated `.vsix` is ignored and should not be committed unless a release process explicitly asks for it.
+
+## Install VSIX
+
+Install into an isolated VS Code extensions directory:
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd" --install-extension .\live-architecture-map-0.0.1.vsix
+& "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd" --install-extension .\live-architecture-map-0.0.1.vsix --force --extensions-dir C:\tmp\vscode-lam-installed-extensions
 ```
+
+Launch ABB_ROS2 with the installed VSIX:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd" "\\wsl.localhost\Ubuntu-22.04\home\jevons\ABB_ROS2" `
+  --new-window `
+  --user-data-dir=C:\tmp\vscode-lam-installed-user-data `
+  --extensions-dir=C:\tmp\vscode-lam-installed-extensions `
+  --disable-gpu
+```
+
+Confirm installation from PowerShell:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd" --list-extensions --extensions-dir C:\tmp\vscode-lam-installed-extensions
+```
+
+Look for `local-tools.live-architecture-map`.
+
+## Safety Guarantee
+
+The inspected workspace is read-only by default. The extension reads files, reads git status, watches for file changes, and stores snapshots/baselines only in VS Code extension-managed storage (`workspaceState`, `globalState`, or VS Code extension storage locations).
+
+It does not write `.vscode/settings.json`, `architecture/`, `docs/live/`, cache files, generated metadata, source files, tests, or git state into the inspected workspace.
+
+Export writes JSON only after the user explicitly chooses a save path in the Save Dialog. The default export location is outside the inspected workspace.
+
+## Known Limitations
+
+- The scanner uses textual Python import parsing and does not execute target Python code.
+- Workspace compile, style, and test checks are reported as not run or unknown unless a future command explicitly wires them.
+- Full installed-VSIX UI validation may still require human inspection because VS Code desktop Activity Bar/sidebar visibility is not fully observable from command-line automation.
+- Git status uses the VS Code Git API when available and falls back to `git status --porcelain=v1 --branch`.

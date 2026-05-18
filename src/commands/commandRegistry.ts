@@ -33,7 +33,8 @@ export function registerLiveArchitectureCommands(
       };
     }),
     vscode.commands.registerCommand(commandIds.showDiffSinceBaseline, async () => {
-      stateManager.setMode("diffSinceBaseline");
+      await stateManager.refresh("diffSinceBaseline");
+      sidebarProvider.refresh();
       return DashboardPanel.show(context, stateManager);
     }),
     vscode.commands.registerCommand(commandIds.focusFeature, async (featureId?: unknown) => {

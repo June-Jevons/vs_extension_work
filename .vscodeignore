@@ -1,11 +1,15 @@
 .vscode/**
 .vscode-test/**
 .vscode-test.mjs
+.gitignore
+.vscodeignore
 artifacts/**
 coverage/**
 node_modules/**
 out-scripts/**
 out-test/**
+out/**/*.map
+package-lock.json
 playwright-report/**
 screenshots/**
 test-results/**

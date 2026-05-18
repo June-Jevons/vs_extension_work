@@ -4,6 +4,7 @@
   "description": "Visual architecture and change-impact dashboard for Python workspaces.",
   "version": "0.0.1",
   "publisher": "local-tools",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/June-Jevons/vs_extension_work.git"

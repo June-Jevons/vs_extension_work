@@ -81,6 +81,11 @@ const liveHtml = renderDashboardShell({
 });
 assert.ok(!liveHtml.includes("Mock validation state"), "dashboard should not contain the retired static subtitle");
 assert.ok(liveHtml.includes("Live workspace data"), "live state should identify live workspace data");
-assert.ok(!/\bmock\b/i.test(liveHtml), "live dashboard HTML should not contain mock wording");
+assert.ok(liveHtml.includes("<strong>Mock data:</strong>false"), "live diagnostics should explicitly report Mock data: false");
+assert.ok(!/\bmock\b(?! data:<\/strong>false)/i.test(liveHtml), "live dashboard HTML should only contain mock wording in the explicit Mock data: false field");
+assert.ok(liveHtml.includes("<strong>Python files:</strong>"), "diagnostics should use clear Python files label");
+assert.ok(liveHtml.includes("<strong>Changed files:</strong>"), "diagnostics should use clear Changed files label");
+assert.ok(liveHtml.includes("<strong>Git status source:</strong>"), "diagnostics should use clear Git status source label");
+assert.ok(liveHtml.includes("<strong>Path type:</strong>"), "diagnostics should use clear Path type label");
 
 console.log("Unit renderer and message protocol checks passed.");
