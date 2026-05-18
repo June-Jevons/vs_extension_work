@@ -48,10 +48,10 @@ artifacts/validation-report.md
 
 ## Extension Development Host
 
-Run the extension against an inspected Python workspace with isolated VS Code state:
+Run the extension against the inspected Python workspace with isolated VS Code state from Windows Native VS Code:
 
 ```powershell
-code C:\Users\Junekim\Work\ABB_ROS2 `
+& "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd" "\\wsl.localhost\Ubuntu-22.04\home\jevons\ABB_ROS2" `
   --new-window `
   --extensionDevelopmentPath=C:\Users\Junekim\Work\99.vs_workspace\vs_extension_work `
   --user-data-dir=C:\tmp\vscode-lam-user-data `
@@ -59,7 +59,9 @@ code C:\Users\Junekim\Work\ABB_ROS2 `
   --disable-gpu
 ```
 
-The inspected workspace is read-only by default. This first pass uses mock data only and does not write `.vscode/settings.json`, `architecture/`, `docs/live/`, metadata, caches, source files, tests, or git state into the inspected workspace.
+The ABB_ROS2 target path is a WSL UNC path, but it must be opened from Windows Native VS Code. Do not use Remote-WSL for validation.
+
+The inspected workspace is read-only by default. The extension uses read-only scanning plus extension-managed storage and does not write `.vscode/settings.json`, `architecture/`, `docs/live/`, metadata, caches, source files, tests, or git state into the inspected workspace.
 
 ## Package and Install
 

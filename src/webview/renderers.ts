@@ -451,13 +451,7 @@ export function renderDiffSinceBaselineMode(state: DashboardState): string {
 }
 
 export function renderFeatureImpactGraph(state: DashboardState): string {
-  const graphNodes = [
-    { id: "config-system", x: 30, y: 48, w: 210, h: 105, color: "#ff7b72" },
-    { id: "operator-panel-startup", x: 340, y: 48, w: 220, h: 105, color: "#ffa657" },
-    { id: "launcher-subprocess-env", x: 650, y: 48, w: 230, h: 105, color: "#58a6ff" },
-    { id: "ros-launch-runtime", x: 960, y: 48, w: 220, h: 105, color: "#7ee787" },
-    { id: "tests-config-scanner", x: 220, y: 220, w: 230, h: 95, color: "#76e3ea" }
-  ];
+  const graphNodes = getImpactGraphNodes(state);
   const featureMap = new Map(state.snapshot.featureBlocks.map((feature) => [feature.id, feature]));
 
   return `
@@ -475,6 +469,38 @@ export function renderFeatureImpactGraph(state: DashboardState): string {
       </svg>
     </div>
   `;
+}
+
+function getImpactGraphNodes(state: DashboardState): Array<{ id: string; x: number; y: number; w: number; h: number; color: string }> {
+  const mockNodes = [
+    { id: "config-system", x: 30, y: 48, w: 210, h: 105, color: "#ff7b72" },
+    { id: "operator-panel-startup", x: 340, y: 48, w: 220, h: 105, color: "#ffa657" },
+    { id: "launcher-subprocess-env", x: 650, y: 48, w: 230, h: 105, color: "#58a6ff" },
+    { id: "ros-launch-runtime", x: 960, y: 48, w: 220, h: 105, color: "#7ee787" },
+    { id: "tests-config-scanner", x: 220, y: 220, w: 230, h: 95, color: "#76e3ea" }
+  ];
+
+  if (mockNodes.some((node) => state.snapshot.featureBlocks.some((feature) => feature.id === node.id))) {
+    return mockNodes;
+  }
+
+  const fixedSlots = [
+    { x: 30, y: 48, w: 210, h: 105, color: "#ff7b72" },
+    { x: 340, y: 48, w: 220, h: 105, color: "#ffa657" },
+    { x: 650, y: 48, w: 230, h: 105, color: "#58a6ff" },
+    { x: 960, y: 48, w: 220, h: 105, color: "#7ee787" },
+    { x: 220, y: 220, w: 230, h: 95, color: "#76e3ea" }
+  ];
+  const impactedIds = new Set(state.snapshot.impactedFeatures.map((feature) => feature.featureId));
+  const selectedFeatures = [
+    ...state.snapshot.featureBlocks.filter((feature) => impactedIds.has(feature.id)),
+    ...state.snapshot.featureBlocks.filter((feature) => !impactedIds.has(feature.id))
+  ].slice(0, fixedSlots.length);
+
+  return selectedFeatures.map((feature, index) => ({
+    id: feature.id,
+    ...fixedSlots[index]!
+  }));
 }
 
 export function renderDependencyGraph(state: DashboardState): string {
@@ -568,6 +594,9 @@ function renderModeContent(state: DashboardState): string {
 
 function renderCurrentChangeArea(state: DashboardState): string {
   const risks = state.snapshot.risks;
+  const breadcrumbLabels = state.snapshot.impactedFeatures.length > 0
+    ? state.snapshot.impactedFeatures.slice(0, 3).map((feature) => feature.label)
+    : state.snapshot.featureBlocks.slice(0, 3).map((feature) => feature.label);
 
   return `
     <section class="panel" data-testid="current-change-area">
@@ -580,9 +609,7 @@ function renderCurrentChangeArea(state: DashboardState): string {
             <span class="auto-refresh">${state.workspace.autoRefresh ? "Auto Refresh On" : "Auto Refresh Off"}</span>
           </div>
           <div class="breadcrumb">
-            <span>Config System</span>
-            <span>Operator Panel Startup</span>
-            <span>Tests / Config Scanner</span>
+            ${breadcrumbLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
           </div>
         </div>
         <div class="risk-grid">

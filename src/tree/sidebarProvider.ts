@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { commandIds } from "../commands/commands";
+import { LiveArchitectureStateManager } from "../core/analysisEngine";
 import { createMockDashboardState } from "../mockData/mockDashboardState";
-import { DashboardMode, getModeLabel } from "../webview/dashboardState";
+import { DashboardMode, DashboardState, getModeLabel } from "../webview/dashboardState";
 import { SidebarItem } from "./treeItems";
 
 export const REQUIRED_ROOT_SECTIONS = [
@@ -30,7 +31,11 @@ export class LiveArchitectureSidebarProvider implements vscode.TreeDataProvider<
   private readonly changeEmitter = new vscode.EventEmitter<SidebarNode | undefined>();
   readonly onDidChangeTreeData = this.changeEmitter.event;
 
-  private readonly state = createMockDashboardState();
+  private readonly fallbackState = createMockDashboardState();
+
+  constructor(private readonly stateManager?: LiveArchitectureStateManager) {
+    this.stateManager?.onDidChangeState(() => this.refresh());
+  }
 
   refresh(): void {
     this.changeEmitter.fire(undefined);
@@ -118,6 +123,7 @@ export class LiveArchitectureSidebarProvider implements vscode.TreeDataProvider<
   }
 
   getChildren(element?: SidebarNode): SidebarNode[] {
+    const state = this.getState();
     if (!element) {
       return REQUIRED_ROOT_SECTIONS.map((label) => ({ type: "root", label }));
     }
@@ -128,22 +134,22 @@ export class LiveArchitectureSidebarProvider implements vscode.TreeDataProvider<
 
     switch (element.label) {
       case "Changed Features":
-        return this.state.snapshot.impactedFeatures.slice(0, 3).map((feature) => ({
+        return state.snapshot.impactedFeatures.slice(0, 6).map((feature) => ({
           type: "feature",
           label: feature.label,
           featureId: feature.featureId,
           risk: feature.riskLevel
         }));
       case "Changed Files":
-        return this.state.snapshot.changedFiles.map((file) => ({
+        return state.snapshot.changedFiles.map((file) => ({
           type: "file",
           label: file.path.split("/").at(-1) ?? file.path,
           path: file.path,
           risk: file.riskLevel
         }));
       case "Impacted Modules":
-        return this.state.snapshot.modules
-          .filter((moduleNode) => ["config-system", "operator-panel-startup", "launcher-subprocess-env"].includes(moduleNode.featureId ?? ""))
+        return state.snapshot.modules
+          .filter((moduleNode) => state.snapshot.impactedFeatures.some((feature) => feature.featureId === moduleNode.featureId))
           .slice(0, 9)
           .map((moduleNode) => ({
             type: "module",
@@ -152,8 +158,9 @@ export class LiveArchitectureSidebarProvider implements vscode.TreeDataProvider<
             risk: moduleNode.riskLevel
           }));
       case "Suggested Tests":
-        return this.state.snapshot.modules
+        return state.snapshot.modules
           .filter((moduleNode) => moduleNode.isTest)
+          .slice(0, 8)
           .map((moduleNode) => ({
             type: "test",
             label: moduleNode.path,
@@ -163,7 +170,7 @@ export class LiveArchitectureSidebarProvider implements vscode.TreeDataProvider<
         return [
           {
             type: "baseline",
-            label: "baseline_2024-05-15"
+            label: state.baselineDiff ? `baseline_${state.baselineDiff.baselineCapturedAtIso.slice(0, 10)}` : "No baseline captured"
           }
         ];
       case "Actions":
@@ -203,6 +210,10 @@ export class LiveArchitectureSidebarProvider implements vscode.TreeDataProvider<
           }
         ];
     }
+  }
+
+  private getState(): DashboardState {
+    return this.stateManager?.getState() ?? this.fallbackState;
   }
 }
 

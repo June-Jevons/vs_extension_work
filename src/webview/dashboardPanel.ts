@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { createMockDashboardState } from "../mockData/mockDashboardState";
+import { LiveArchitectureStateManager } from "../core/analysisEngine";
 import { DashboardMode } from "./dashboardState";
 import { getDashboardWebviewHtml, getNonce } from "./html";
 import { isWebviewToExtensionMessage } from "./messageProtocol";
@@ -18,11 +18,10 @@ export interface DashboardCommandResult {
 export class DashboardPanel {
   private static currentPanel: DashboardPanel | undefined;
 
-  private state = createMockDashboardState();
-
   private constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly panel: vscode.WebviewPanel
+    private readonly panel: vscode.WebviewPanel,
+    private readonly stateManager: LiveArchitectureStateManager
   ) {
     this.panel.onDidDispose(() => {
       DashboardPanel.currentPanel = undefined;
@@ -31,11 +30,16 @@ export class DashboardPanel {
     this.panel.webview.onDidReceiveMessage(async (message: unknown) => {
       await this.handleMessage(message);
     }, undefined, this.context.subscriptions);
+
+    this.stateManager.onDidChangeState(() => {
+      this.render();
+    }, undefined, this.context.subscriptions);
   }
 
   static show(
     context: vscode.ExtensionContext,
-    mode: DashboardMode = "liveChanges",
+    stateManager: LiveArchitectureStateManager,
+    mode?: DashboardMode,
     selectedFeatureId?: string
   ): DashboardCommandResult {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
@@ -51,27 +55,32 @@ export class DashboardPanel {
           localResourceRoots: [context.extensionUri]
         }
       );
-      DashboardPanel.currentPanel = new DashboardPanel(context, panel);
+      DashboardPanel.currentPanel = new DashboardPanel(context, panel, stateManager);
     } else {
       DashboardPanel.currentPanel.panel.reveal(column);
     }
 
-    DashboardPanel.currentPanel.setMode(mode, selectedFeatureId);
-    return DashboardPanel.currentPanel.getCommandResult();
-  }
-
-  static refresh(context: vscode.ExtensionContext): DashboardCommandResult {
-    if (!DashboardPanel.currentPanel) {
-      return DashboardPanel.show(context);
+    if (mode) {
+      stateManager.setMode(mode, selectedFeatureId);
+    } else if (selectedFeatureId) {
+      stateManager.setMode("featureFocus", selectedFeatureId);
     }
     DashboardPanel.currentPanel.render();
     return DashboardPanel.currentPanel.getCommandResult();
   }
 
-  private setMode(mode: DashboardMode, selectedFeatureId?: string): void {
-    this.state = createMockDashboardState(mode, selectedFeatureId ?? this.state.selectedFeatureId);
-    this.panel.title = `Live Architecture Map: ${mode}`;
-    this.render();
+  static async refresh(
+    context: vscode.ExtensionContext,
+    stateManager: LiveArchitectureStateManager,
+    mode?: DashboardMode
+  ): Promise<DashboardCommandResult> {
+    if (!DashboardPanel.currentPanel) {
+      await stateManager.refresh(mode);
+      return DashboardPanel.show(context, stateManager);
+    }
+    await stateManager.refresh(mode);
+    DashboardPanel.currentPanel.render();
+    return DashboardPanel.currentPanel.getCommandResult();
   }
 
   private async handleMessage(message: unknown): Promise<void> {
@@ -85,39 +94,44 @@ export class DashboardPanel {
 
     switch (message.type) {
       case "ready":
-        await this.panel.webview.postMessage({ type: "state", state: this.state });
+        await this.panel.webview.postMessage({ type: "state", state: this.stateManager.getState() });
         return;
       case "setMode":
-        this.setMode(message.mode);
+        this.stateManager.setMode(message.mode);
         return;
       case "selectFeature":
-        this.setMode("featureFocus", message.featureId);
+        this.stateManager.setMode("featureFocus", message.featureId);
         return;
       case "captureBaseline":
+        await this.stateManager.captureBaseline();
+        return;
       case "showDiffSinceBaseline":
-        this.setMode("diffSinceBaseline");
+        this.stateManager.setMode("diffSinceBaseline");
         return;
       case "refresh":
-        this.render();
+        await this.stateManager.refresh(this.stateManager.getState().mode);
         return;
       case "exportSnapshot":
         await this.panel.webview.postMessage({
           type: "loading",
-          message: "Export is intentionally not wired in the mock UI foundation."
+          message: "Export remains intentionally deferred until Phase 11."
         });
         return;
     }
   }
 
   private render(): void {
-    this.panel.webview.html = getDashboardWebviewHtml(this.panel.webview, this.state, getNonce());
+    const state = this.stateManager.getState();
+    this.panel.title = `Live Architecture Map: ${state.mode}`;
+    this.panel.webview.html = getDashboardWebviewHtml(this.panel.webview, state, getNonce());
   }
 
   private getCommandResult(): DashboardCommandResult {
+    const state = this.stateManager.getState();
     return {
       opened: true,
-      mode: this.state.mode,
-      selectedFeatureId: this.state.selectedFeatureId,
+      mode: state.mode,
+      selectedFeatureId: state.selectedFeatureId,
       panelTitle: this.panel.title,
       viewType: this.panel.viewType,
       visible: this.panel.visible,

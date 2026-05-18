@@ -15,7 +15,11 @@
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": [
+      "node",
+      "vscode"
+    ]
   },
   "include": [
     "src/**/*.ts"
