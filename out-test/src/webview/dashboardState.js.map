@@ -1,1 +1,0 @@
-{"version":3,"file":"dashboardState.js","sourceRoot":"","sources":["../../../src/webview/dashboardState.ts"],"names":[],"mappings":";;;AA8HA,0CAEC;AATY,QAAA,cAAc,GAAoB;IAC7C,aAAa;IACb,mBAAmB;IACnB,cAAc;IACd,mBAAmB;CACpB,CAAC;AAEF,SAAgB,eAAe,CAAC,KAAc;IAC5C,OAAO,OAAO,KAAK,KAAK,QAAQ,IAAK,sBAA2B,CAAC,QAAQ,CAAC,KAAK,CAAC,CAAC;AACnF,CAAC"}
