@@ -6,6 +6,7 @@ import { buildGraphDiff } from "../graph/graphDiff";
 import { BaselineStore } from "../storage/baselineStore";
 import { SnapshotStore } from "../storage/snapshotStore";
 import { createWorkspaceKey } from "../storage/workspaceKey";
+import { describePathKind, logInfo } from "./outputChannel";
 import {
   ChangedFile,
   DashboardMode,
@@ -14,7 +15,9 @@ import {
   ImpactedFeature,
   ModuleNode,
   RiskLevel,
+  ScannerStatus,
   ValidationStatus,
+  WorkspaceDiagnostics,
   WorkspaceSnapshot
 } from "../webview/dashboardState";
 import { buildFeatureBlocks, getFeatureDefinition, inferFeatureFromImports, mapFeatureForPath } from "./featureMapper";
@@ -43,7 +46,28 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       return this.refreshing;
     }
 
+    this.state = {
+      ...this.state,
+      isLoading: true,
+      error: undefined,
+      diagnostics: {
+        ...this.state.diagnostics,
+        lastUpdatedIso: new Date().toISOString()
+      }
+    };
+    this.changeEmitter.fire(this.state);
+
     this.refreshing = this.buildState(requestedMode, selectedFeatureId)
+      .catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : "Unknown analysis error.";
+        logInfo(`analysis error: ${reason}`);
+        return this.createMockFallbackState(
+          requestedMode ?? this.state.mode,
+          selectedFeatureId ?? this.state.selectedFeatureId,
+          `Analysis error: ${reason}`,
+          "error"
+        );
+      })
       .then((state) => {
         this.state = state;
         this.changeEmitter.fire(state);
@@ -57,13 +81,15 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
   }
 
   setMode(mode: DashboardMode, selectedFeatureId?: string): DashboardState {
-    const current = this.state.isMockData
-      ? createMockDashboardState(mode, selectedFeatureId ?? this.state.selectedFeatureId)
-      : {
-        ...this.state,
-        mode,
-        selectedFeatureId: selectedFeatureId ?? this.state.selectedFeatureId
-      };
+    const current = {
+      ...this.state,
+      mode,
+      selectedFeatureId: selectedFeatureId ?? this.state.selectedFeatureId,
+      diagnostics: {
+        ...this.state.diagnostics,
+        baselineCapturedAtIso: this.state.baselineDiff?.baselineCapturedAtIso
+      }
+    };
     this.state = current;
     this.changeEmitter.fire(current);
     return current;
@@ -72,6 +98,7 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
   async captureBaseline(): Promise<{ captured: boolean; baselineId?: string; wroteWorkspaceFiles: false }> {
     if (this.state.isMockData) {
       this.setMode("diffSinceBaseline");
+      logInfo(`capture baseline skipped: stateSource=mock, fallbackReason=${this.state.diagnostics.fallbackReason ?? "sample data"}`);
       return {
         captured: false,
         wroteWorkspaceFiles: false
@@ -82,9 +109,14 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     this.state = {
       ...this.state,
       mode: "diffSinceBaseline",
-      baselineDiff: buildGraphDiff(baseline.snapshot, this.state.snapshot)
+      baselineDiff: buildGraphDiff(baseline.snapshot, this.state.snapshot),
+      diagnostics: {
+        ...this.state.diagnostics,
+        baselineCapturedAtIso: baseline.capturedAtIso
+      }
     };
     this.changeEmitter.fire(this.state);
+    logInfo(`capture baseline: id=${baseline.id}, storage=workspaceState`);
 
     return {
       captured: true,
@@ -95,8 +127,16 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
 
   async clearWorkspaceCache(): Promise<{ cleared: boolean; wroteWorkspaceFiles: false }> {
     if (this.state.isMockData) {
-      this.state = createMockDashboardState(this.state.mode, this.state.selectedFeatureId);
+      this.state = {
+        ...this.state,
+        baselineDiff: undefined,
+        diagnostics: {
+          ...this.state.diagnostics,
+          baselineCapturedAtIso: undefined
+        }
+      };
       this.changeEmitter.fire(this.state);
+      logInfo("clear workspace cache: mock/fallback state only; no workspace files touched.");
       return {
         cleared: false,
         wroteWorkspaceFiles: false
@@ -120,7 +160,12 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
   private async buildState(requestedMode?: DashboardMode, selectedFeatureId?: string): Promise<DashboardState> {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
-      return createMockDashboardState(requestedMode ?? this.state.mode, selectedFeatureId ?? this.state.selectedFeatureId);
+      return this.createMockFallbackState(
+        requestedMode ?? this.state.mode,
+        selectedFeatureId ?? this.state.selectedFeatureId,
+        "No workspace folder is open.",
+        "mock fallback"
+      );
     }
 
     const configuration = vscode.workspace.getConfiguration("liveArchitectureMap");
@@ -132,16 +177,29 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       rootUri: folder.uri.toString()
     });
 
+    logInfo(`workspace folder URI=${folder.uri.toString()}`);
+    logInfo(`workspace fsPath=${folder.uri.fsPath}`);
+    logInfo(`workspace path kind=${describePathKind(folder.uri.fsPath)}`);
     const scan = await scanWorkspace(folder, {
       excludeGlobs,
       maxFilesToAnalyze
     });
 
     if (scan.modules.length === 0) {
-      return createMockDashboardState(requestedMode ?? this.state.mode, selectedFeatureId ?? this.state.selectedFeatureId);
+      return this.createMockFallbackState(
+        requestedMode ?? this.state.mode,
+        selectedFeatureId ?? this.state.selectedFeatureId,
+        scan.fallbackReason
+          ? `${scan.fallbackReason} No Python modules were discovered.`
+          : "No Python modules were discovered.",
+        "mock fallback",
+        folder,
+        scan.discoveredFileCount
+      );
     }
 
     const graph = buildDependencyGraph(scan.modules, scan.importRecords);
+    logInfo(`import edge count=${graph.dependencies.length}`);
     const modulesWithFeatures = applyFeatureInference(graph.modules, graph.dependencies);
     const modules = modulesWithFeatures.map((moduleNode) => {
       const risk = scoreModuleRisk(moduleNode.path, moduleNode.importedBy.length);
@@ -190,6 +248,26 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
 
     await this.snapshotStore.saveSnapshot(snapshot);
     const baseline = this.baselineStore.getBaseline(workspaceKey);
+    const diagnostics: WorkspaceDiagnostics = {
+      rootUri: folder.uri.toString(),
+      workspaceFsPath: folder.uri.fsPath,
+      pathKind: describePathKind(folder.uri.fsPath),
+      stateSource: "real",
+      fallbackReason: scan.fallbackReason,
+      pythonFileCount: scan.totalPythonFiles,
+      moduleCount: modules.length,
+      dependencyCount: graph.dependencies.length,
+      changedFileCount: changedFiles.length,
+      gitBranch: gitStatus.summary?.branch ?? "unknown",
+      gitStatusSource: gitStatus.source,
+      scannerStatus: scan.scannerStatus,
+      discoveredFileCount: scan.discoveredFileCount,
+      lastUpdatedIso: snapshot.capturedAtIso,
+      baselineCapturedAtIso: baseline?.capturedAtIso
+    };
+    logInfo(
+      `final state source=real, pythonFiles=${diagnostics.pythonFileCount}, modules=${diagnostics.moduleCount}, dependencies=${diagnostics.dependencyCount}, changedFiles=${diagnostics.changedFileCount}, gitBranch=${diagnostics.gitBranch}, gitStatusSource=${diagnostics.gitStatusSource}`
+    );
 
     return {
       mode,
@@ -203,9 +281,65 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       snapshot,
       selectedFeatureId: selected,
       baselineDiff: baseline ? buildGraphDiff(baseline.snapshot, snapshot) : undefined,
+      diagnostics,
       isMockData: false,
       isLoading: false
     };
+  }
+
+  private createMockFallbackState(
+    mode: DashboardMode,
+    selectedFeatureId: string | undefined,
+    fallbackReason: string,
+    scannerStatus: ScannerStatus,
+    folder?: vscode.WorkspaceFolder,
+    discoveredFileCount = 0
+  ): DashboardState {
+    const fallback = createMockDashboardState(mode, selectedFeatureId);
+    const capturedAtIso = new Date().toISOString();
+    const rootUri = folder?.uri.toString() ?? fallback.workspace.rootUri;
+    const workspaceName = folder?.name ?? fallback.workspace.name;
+    const workspaceFsPath = folder?.uri.fsPath ?? fallback.diagnostics.workspaceFsPath;
+    const snapshot: WorkspaceSnapshot = {
+      ...fallback.snapshot,
+      workspaceName,
+      rootUri,
+      capturedAtIso
+    };
+    const state: DashboardState = {
+      ...fallback,
+      workspace: {
+        ...fallback.workspace,
+        name: workspaceName,
+        rootUri,
+        lastUpdatedIso: capturedAtIso
+      },
+      snapshot,
+      baselineDiff: undefined,
+      diagnostics: {
+        ...fallback.diagnostics,
+        rootUri,
+        workspaceFsPath,
+        pathKind: describePathKind(workspaceFsPath),
+        stateSource: "mock",
+        fallbackReason,
+        pythonFileCount: 0,
+        moduleCount: 0,
+        dependencyCount: 0,
+        changedFileCount: 0,
+        gitBranch: "unknown",
+        gitStatusSource: "unavailable",
+        scannerStatus,
+        discoveredFileCount,
+        lastUpdatedIso: capturedAtIso,
+        baselineCapturedAtIso: undefined
+      },
+      isMockData: true,
+      isLoading: false,
+      error: scannerStatus === "error" ? fallbackReason : undefined
+    };
+    logInfo(`final state source=mock, fallbackReason=${fallbackReason}`);
+    return state;
   }
 }
 

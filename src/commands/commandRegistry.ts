@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { LiveArchitectureStateManager } from "../core/analysisEngine";
 import { DashboardMode, isDashboardMode } from "../webview/dashboardState";
 import { DashboardPanel } from "../webview/dashboardPanel";
+import { exportSnapshotAsJson, ExportSnapshotOptions } from "../storage/exportSnapshot";
 import { LiveArchitectureSidebarProvider } from "../tree/sidebarProvider";
 import { commandIds } from "./commands";
 
@@ -23,8 +24,13 @@ export function registerLiveArchitectureCommands(
       return result;
     }),
     vscode.commands.registerCommand(commandIds.captureBaseline, async () => {
-      await stateManager.captureBaseline();
-      return DashboardPanel.show(context, stateManager);
+      const result = await stateManager.captureBaseline();
+      sidebarProvider.refresh();
+      const dashboard = DashboardPanel.show(context, stateManager);
+      return {
+        ...result,
+        dashboard
+      };
     }),
     vscode.commands.registerCommand(commandIds.showDiffSinceBaseline, async () => {
       stateManager.setMode("diffSinceBaseline");
@@ -37,10 +43,33 @@ export function registerLiveArchitectureCommands(
       await stateManager.refresh("featureFocus", selectedFeatureId);
       return DashboardPanel.show(context, stateManager);
     }),
-    vscode.commands.registerCommand(commandIds.exportSnapshot, () => {
+    vscode.commands.registerCommand(commandIds.exportSnapshot, async (options?: unknown) => {
+      return exportSnapshotAsJson(context, stateManager.getState(), parseExportOptions(options));
+    }),
+    vscode.commands.registerCommand(commandIds.configure, async () => {
+      await vscode.commands.executeCommand("workbench.action.openSettings", "liveArchitectureMap");
       return {
-        exported: false,
-        reason: "Export is deferred until Phase 11.",
+        configured: true,
+        action: "workbench.action.openSettings",
+        filter: "liveArchitectureMap",
+        wroteWorkspaceFiles: false
+      };
+    }),
+    vscode.commands.registerCommand(commandIds.focusTimeline, async () => {
+      const state = stateManager.getState();
+      if (state.mode === "diffSinceBaseline" && state.baselineDiff) {
+        return {
+          focused: true,
+          message: "Structural timeline is visible in Diff Since Baseline mode.",
+          wroteWorkspaceFiles: false
+        };
+      }
+
+      const message = "Timeline is visible in Diff Since Baseline mode after a baseline is captured.";
+      void vscode.window.showInformationMessage(message);
+      return {
+        focused: false,
+        message,
         wroteWorkspaceFiles: false
       };
     }),
@@ -49,7 +78,7 @@ export function registerLiveArchitectureCommands(
       sidebarProvider.refresh();
       return result;
     }),
-    vscode.commands.registerCommand(commandIds.openMockFile, async (relativePath?: unknown) => {
+    vscode.commands.registerCommand(commandIds.openWorkspaceFile, async (relativePath?: unknown) => {
       if (typeof relativePath !== "string" || relativePath.length === 0) {
         return {
           opened: false,
@@ -81,7 +110,7 @@ export function registerLiveArchitectureCommands(
         return {
           opened: false,
           path: relativePath,
-          reason: "Mock file does not exist in the current workspace.",
+          reason: "File does not exist in the current workspace.",
           wroteWorkspaceFiles: false
         };
       }
@@ -102,4 +131,15 @@ function normalizeMode(value: unknown): DashboardMode | undefined {
   }
 
   return undefined;
+}
+
+function parseExportOptions(value: unknown): ExportSnapshotOptions | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const simulateCancel = "simulateCancel" in value && value.simulateCancel === true;
+  return {
+    simulateCancel
+  };
 }

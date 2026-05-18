@@ -4,6 +4,10 @@
   "description": "Visual architecture and change-impact dashboard for Python workspaces.",
   "version": "0.0.1",
   "publisher": "local-tools",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/June-Jevons/vs_extension_work.git"
+  },
   "categories": [
     "Visualization",
     "Other"
@@ -20,6 +24,11 @@
     "onCommand:liveArchitectureMap.refresh",
     "onCommand:liveArchitectureMap.captureBaseline",
     "onCommand:liveArchitectureMap.showDiffSinceBaseline",
+    "onCommand:liveArchitectureMap.focusFeature",
+    "onCommand:liveArchitectureMap.exportSnapshot",
+    "onCommand:liveArchitectureMap.configure",
+    "onCommand:liveArchitectureMap.focusTimeline",
+    "onCommand:liveArchitectureMap.clearWorkspaceCache",
     "workspaceContains:**/*.py"
   ],
   "contributes": {
@@ -47,6 +56,14 @@
       {
         "command": "liveArchitectureMap.exportSnapshot",
         "title": "Live Architecture Map: Export Snapshot"
+      },
+      {
+        "command": "liveArchitectureMap.configure",
+        "title": "Live Architecture Map: Configure"
+      },
+      {
+        "command": "liveArchitectureMap.focusTimeline",
+        "title": "Live Architecture Map: Focus Timeline"
       },
       {
         "command": "liveArchitectureMap.clearWorkspaceCache",
@@ -97,6 +114,14 @@
             "**/venv/**",
             "**/__pycache__/**",
             "**/node_modules/**",
+            "**/out/**",
+            "**/out-test/**",
+            "**/out-scripts/**",
+            "**/artifacts/**",
+            "**/.vscode-test/**",
+            "**/test-results/**",
+            "**/playwright-report/**",
+            "**/coverage/**",
             "**/build/**",
             "**/install/**",
             "**/log/**",

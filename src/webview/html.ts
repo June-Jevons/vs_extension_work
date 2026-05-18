@@ -56,6 +56,16 @@ export function getDashboardWebviewHtml(
         vscode.postMessage({ type: "showDiffSinceBaseline" });
       } else if (command === "exportSnapshot") {
         vscode.postMessage({ type: "exportSnapshot" });
+      } else if (command === "configure") {
+        vscode.postMessage({ type: "configure" });
+      } else if (command === "focusTimeline") {
+        const timeline = document.querySelector("[data-testid='structural-timeline']");
+        if (timeline) {
+          timeline.scrollIntoView({ behavior: "smooth", block: "center" });
+          timeline.classList.add("focus-pulse");
+          window.setTimeout(() => timeline.classList.remove("focus-pulse"), 1400);
+        }
+        vscode.postMessage({ type: "focusTimeline", available: Boolean(timeline) });
       }
     });
 

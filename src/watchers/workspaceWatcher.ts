@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { LiveArchitectureStateManager } from "../core/analysisEngine";
+import { shouldExcludePath } from "../core/readDirectoryFallbackScanner";
 
 const WATCH_PATTERNS = [
   "**/*.py",
@@ -16,6 +17,7 @@ const WATCH_PATTERNS = [
 export class WorkspaceWatcher implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private refreshTimer: NodeJS.Timeout | undefined;
+  private excludeGlobs: string[] = [];
 
   constructor(private readonly stateManager: LiveArchitectureStateManager) {}
 
@@ -24,14 +26,15 @@ export class WorkspaceWatcher implements vscode.Disposable {
     if (!configuration.get<boolean>("autoWatch", true)) {
       return;
     }
+    this.excludeGlobs = configuration.get<string[]>("excludeGlobs", []);
 
     for (const pattern of WATCH_PATTERNS) {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       this.disposables.push(
         watcher,
-        watcher.onDidCreate(() => this.scheduleRefresh()),
-        watcher.onDidChange(() => this.scheduleRefresh()),
-        watcher.onDidDelete(() => this.scheduleRefresh())
+        watcher.onDidCreate((uri) => this.scheduleRefresh(uri)),
+        watcher.onDidChange((uri) => this.scheduleRefresh(uri)),
+        watcher.onDidDelete((uri) => this.scheduleRefresh(uri))
       );
     }
   }
@@ -46,7 +49,12 @@ export class WorkspaceWatcher implements vscode.Disposable {
     }
   }
 
-  private scheduleRefresh(): void {
+  private scheduleRefresh(uri: vscode.Uri): void {
+    const relativePath = vscode.workspace.asRelativePath(uri, false).replaceAll("\\", "/");
+    if (shouldExcludePath(relativePath, this.excludeGlobs)) {
+      return;
+    }
+
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);
     }

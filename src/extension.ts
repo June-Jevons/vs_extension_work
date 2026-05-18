@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { registerLiveArchitectureCommands } from "./commands/commandRegistry";
 import { LiveArchitectureStateManager } from "./core/analysisEngine";
+import { describePathKind, getLiveArchitectureOutputChannel, logInfo } from "./core/outputChannel";
 import { BaselineStore } from "./storage/baselineStore";
 import { SnapshotStore } from "./storage/snapshotStore";
 import { DashboardMode, isDashboardMode } from "./webview/dashboardState";
@@ -14,6 +15,17 @@ export interface LiveArchitectureMapApi {
 }
 
 export function activate(context: vscode.ExtensionContext): LiveArchitectureMapApi {
+  const outputChannel = getLiveArchitectureOutputChannel();
+  logInfo("activation");
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (folder) {
+    logInfo(`workspace folder URI=${folder.uri.toString()}`);
+    logInfo(`workspace fsPath=${folder.uri.fsPath}`);
+    logInfo(`workspace path kind=${describePathKind(folder.uri.fsPath)}`);
+  } else {
+    logInfo("workspace folder URI=<none>");
+  }
+
   const snapshotStore = new SnapshotStore(context);
   const baselineStore = new BaselineStore(context);
   const stateManager = new LiveArchitectureStateManager(context, snapshotStore, baselineStore);
@@ -21,6 +33,7 @@ export function activate(context: vscode.ExtensionContext): LiveArchitectureMapA
   const watcher = new WorkspaceWatcher(stateManager);
 
   context.subscriptions.push(
+    outputChannel,
     stateManager,
     watcher,
     vscode.window.registerTreeDataProvider("liveArchitectureMap.sidebar", sidebarProvider),

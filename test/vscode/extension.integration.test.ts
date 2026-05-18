@@ -30,6 +30,8 @@ suite("Live Architecture Map VS Code integration", () => {
       commandIds.showDiffSinceBaseline,
       commandIds.focusFeature,
       commandIds.exportSnapshot,
+      commandIds.configure,
+      commandIds.focusTimeline,
       commandIds.clearWorkspaceCache
     ];
 
@@ -82,7 +84,41 @@ suite("Live Architecture Map VS Code integration", () => {
     assert.ok(isWebviewToExtensionMessage({ type: "setMode", mode: "wholeArchitecture" }));
     assert.ok(isWebviewToExtensionMessage({ type: "setMode", mode: "featureFocus" }));
     assert.ok(isWebviewToExtensionMessage({ type: "showDiffSinceBaseline" }));
+    assert.ok(isWebviewToExtensionMessage({ type: "configure" }));
+    assert.ok(isWebviewToExtensionMessage({ type: "focusTimeline", available: true }));
     assert.ok(!isWebviewToExtensionMessage({ type: "setMode", mode: "scanner" }));
+  });
+
+  test("Export command cancellation uses a safe default outside the inspected workspace", async () => {
+    const result = await vscode.commands.executeCommand(commandIds.exportSnapshot, { simulateCancel: true }) as {
+      exported?: boolean;
+      cancelled?: boolean;
+      defaultInsideWorkspace?: boolean;
+      wroteWorkspaceFiles?: boolean;
+    };
+
+    assert.strictEqual(result.exported, false);
+    assert.strictEqual(result.cancelled, true);
+    assert.strictEqual(result.defaultInsideWorkspace, false);
+    assert.strictEqual(result.wroteWorkspaceFiles, false);
+  });
+
+  test("Configure and Timeline commands are explicit", async () => {
+    const timeline = await vscode.commands.executeCommand(commandIds.focusTimeline) as {
+      focused?: boolean;
+      message?: string;
+      wroteWorkspaceFiles?: boolean;
+    };
+    assert.strictEqual(typeof timeline.focused, "boolean");
+    assert.ok(timeline.message && timeline.message.includes("Timeline"));
+    assert.strictEqual(timeline.wroteWorkspaceFiles, false);
+  });
+
+  test("Capture Baseline command reports extension-owned storage behavior", async () => {
+    const result = await vscode.commands.executeCommand(commandIds.captureBaseline) as {
+      wroteWorkspaceFiles?: boolean;
+    };
+    assert.strictEqual(result.wroteWorkspaceFiles, false);
   });
 
   test("dashboard command does not write inspected workspace files", async () => {
@@ -98,6 +134,7 @@ suite("Live Architecture Map VS Code integration", () => {
     await vscode.commands.executeCommand(commandIds.openDashboard, "wholeArchitecture");
     await vscode.commands.executeCommand(commandIds.refresh);
     await vscode.commands.executeCommand(commandIds.showDiffSinceBaseline);
+    await vscode.commands.executeCommand(commandIds.exportSnapshot, { simulateCancel: true });
 
     const after = forbiddenPaths.map((forbiddenPath) => fs.existsSync(forbiddenPath));
     assert.deepStrictEqual(after, before, "dashboard commands should not create target workspace files");

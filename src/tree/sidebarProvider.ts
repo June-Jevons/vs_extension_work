@@ -71,7 +71,7 @@ export class LiveArchitectureSidebarProvider implements vscode.TreeDataProvider<
       item.iconPath = new vscode.ThemeIcon("file-code");
       item.tooltip = element.path;
       item.command = {
-        command: commandIds.openMockFile,
+        command: commandIds.openWorkspaceFile,
         title: "Open Changed File",
         arguments: [element.path]
       };

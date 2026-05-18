@@ -21,6 +21,32 @@ export interface GitSummary {
   behind: number;
 }
 
+export type GitStatusSource = "VS Code Git API" | "CLI fallback" | "unavailable";
+
+export type ScannerStatus =
+  | "findFiles"
+  | "readDirectory fallback"
+  | "mock fallback"
+  | "error";
+
+export interface WorkspaceDiagnostics {
+  rootUri: string;
+  workspaceFsPath?: string;
+  pathKind: "unc-wsl" | "unc" | "local" | "unknown";
+  stateSource: "real" | "mock";
+  fallbackReason?: string;
+  pythonFileCount: number;
+  moduleCount: number;
+  dependencyCount: number;
+  changedFileCount: number;
+  gitBranch: string;
+  gitStatusSource: GitStatusSource;
+  scannerStatus: ScannerStatus;
+  discoveredFileCount: number;
+  lastUpdatedIso: string;
+  baselineCapturedAtIso?: string;
+}
+
 export interface WorkspaceSnapshot {
   workspaceKey: string;
   workspaceName: string;
@@ -135,6 +161,7 @@ export interface DashboardState {
   snapshot: WorkspaceSnapshot;
   selectedFeatureId?: string;
   baselineDiff?: BaselineDiff;
+  diagnostics: WorkspaceDiagnostics;
   isMockData: boolean;
   isLoading: boolean;
   error?: string;

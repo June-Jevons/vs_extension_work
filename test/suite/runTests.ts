@@ -2,6 +2,7 @@ import "./extension.test";
 import "./featureMapper.test";
 import "./graphDiff.test";
 import "./importParser.test";
+import "./readDirectoryFallbackScanner.test";
 import "./riskScorer.test";
 import "./storage.test";
 

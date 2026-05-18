@@ -6,6 +6,7 @@ import { renderDashboardShell } from "../../src/webview/renderers";
 
 const commonTestIds = [
   "dashboard-root",
+  "workspace-diagnostics-panel",
   "mode-liveChanges",
   "mode-wholeArchitecture",
   "mode-featureFocus",
@@ -61,7 +62,25 @@ for (const mode of Object.keys(requiredByMode) as DashboardMode[]) {
 assert.ok(isWebviewToExtensionMessage({ type: "ready" }));
 assert.ok(isWebviewToExtensionMessage({ type: "setMode", mode: "featureFocus" }));
 assert.ok(isWebviewToExtensionMessage({ type: "selectFeature", featureId: "motion-planning" }));
+assert.ok(isWebviewToExtensionMessage({ type: "configure" }));
+assert.ok(isWebviewToExtensionMessage({ type: "focusTimeline", available: false }));
 assert.ok(!isWebviewToExtensionMessage({ type: "setMode", mode: "scanner" }));
 assert.ok(!isWebviewToExtensionMessage({ type: "selectFeature", featureId: "" }));
+
+const liveState = createMockDashboardState("wholeArchitecture");
+const liveHtml = renderDashboardShell({
+  ...liveState,
+  isMockData: false,
+  diagnostics: {
+    ...liveState.diagnostics,
+    stateSource: "real",
+    fallbackReason: undefined,
+    gitStatusSource: "CLI fallback",
+    scannerStatus: "findFiles"
+  }
+});
+assert.ok(!liveHtml.includes("Mock validation state"), "dashboard should not contain the retired static subtitle");
+assert.ok(liveHtml.includes("Live workspace data"), "live state should identify live workspace data");
+assert.ok(!/\bmock\b/i.test(liveHtml), "live dashboard HTML should not contain mock wording");
 
 console.log("Unit renderer and message protocol checks passed.");

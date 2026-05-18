@@ -16,6 +16,7 @@ const reportPath = path.join(repoRoot, "artifacts", "validation-report.md");
 
 const commonTestIds = [
   "dashboard-root",
+  "workspace-diagnostics-panel",
   "mode-liveChanges",
   "mode-wholeArchitecture",
   "mode-featureFocus",

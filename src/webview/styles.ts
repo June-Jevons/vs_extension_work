@@ -165,6 +165,39 @@ select {
   min-width: 0;
 }
 
+.diagnostics-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--lam-line);
+  border-radius: 6px;
+  background: rgba(13, 18, 25, 0.86);
+  color: var(--lam-muted);
+  box-shadow: var(--lam-shadow);
+}
+
+.diagnostics-panel span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 23px;
+  padding: 2px 7px;
+  border: 1px solid rgba(59, 70, 84, 0.62);
+  border-radius: 5px;
+  background: rgba(24, 33, 43, 0.68);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostics-panel strong {
+  color: var(--lam-text);
+  font-weight: 650;
+}
+
 .panel {
   min-width: 0;
   min-height: 0;
@@ -703,6 +736,11 @@ select {
 .timeline-svg {
   width: 100%;
   height: 180px;
+}
+
+.focus-pulse {
+  outline: 2px solid rgba(88, 166, 255, 0.8);
+  outline-offset: 2px;
 }
 
 @media (max-width: 1180px) {

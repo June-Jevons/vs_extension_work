@@ -1,10 +1,12 @@
 import * as cp from "child_process";
 import * as vscode from "vscode";
-import { ChangedFile, GitSummary } from "../webview/dashboardState";
+import { logInfo } from "../core/outputChannel";
+import { ChangedFile, GitStatusSource, GitSummary } from "../webview/dashboardState";
 import { parseGitStatusPorcelain } from "./gitStatusParser";
 
 export interface GitStatusResult {
   summary?: GitSummary;
+  source: GitStatusSource;
   changedFiles: Array<Pick<ChangedFile, "path" | "status">>;
 }
 
@@ -38,10 +40,13 @@ interface GitResourceState {
 export async function getGitStatus(folder: vscode.WorkspaceFolder): Promise<GitStatusResult> {
   const fromApi = await getGitStatusFromVsCodeApi(folder);
   if (fromApi) {
+    logInfo(`git status source=${fromApi.source}, branch=${fromApi.summary?.branch ?? "unknown"}, changedFileCount=${fromApi.changedFiles.length}`);
     return fromApi;
   }
 
-  return getGitStatusFromCli(folder.uri.fsPath);
+  const fromCli = await getGitStatusFromCli(folder.uri.fsPath);
+  logInfo(`git status source=${fromCli.source}, branch=${fromCli.summary?.branch ?? "unknown"}, changedFileCount=${fromCli.changedFiles.length}`);
+  return fromCli;
 }
 
 async function getGitStatusFromVsCodeApi(folder: vscode.WorkspaceFolder): Promise<GitStatusResult | undefined> {
@@ -68,6 +73,7 @@ async function getGitStatusFromVsCodeApi(folder: vscode.WorkspaceFolder): Promis
   }));
 
   return {
+    source: "VS Code Git API",
     summary: {
       branch: repository.state.HEAD?.name ?? "unknown",
       changedFileCount: changedFiles.length,
@@ -80,9 +86,10 @@ async function getGitStatusFromVsCodeApi(folder: vscode.WorkspaceFolder): Promis
 
 function getGitStatusFromCli(cwd: string): Promise<GitStatusResult> {
   return new Promise((resolve) => {
-    cp.execFile("git", ["status", "--porcelain=v1", "--branch"], { cwd, windowsHide: true }, (error, stdout) => {
+    cp.execFile("git", ["-c", "safe.directory=*", "status", "--porcelain=v1", "--branch"], { cwd, windowsHide: true }, (error, stdout) => {
       if (error) {
         resolve({
+          source: "unavailable",
           changedFiles: []
         });
         return;
@@ -94,6 +101,7 @@ function getGitStatusFromCli(cwd: string): Promise<GitStatusResult> {
       const statusOutput = lines.filter((line) => !line.startsWith("## ")).join("\n");
       const parsed = parseGitStatusPorcelain(statusOutput, branch);
       resolve({
+        source: "CLI fallback",
         summary: {
           branch,
           changedFileCount: parsed.changedFiles.length,

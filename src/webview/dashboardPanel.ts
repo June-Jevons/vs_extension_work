@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
+import { commandIds } from "../commands/commands";
 import { LiveArchitectureStateManager } from "../core/analysisEngine";
+import { logInfo } from "../core/outputChannel";
 import { DashboardMode } from "./dashboardState";
 import { getDashboardWebviewHtml, getNonce } from "./html";
 import { isWebviewToExtensionMessage } from "./messageProtocol";
@@ -66,6 +68,8 @@ export class DashboardPanel {
       stateManager.setMode("featureFocus", selectedFeatureId);
     }
     DashboardPanel.currentPanel.render();
+    const state = stateManager.getState();
+    logInfo(`dashboard opened: mode=${state.mode}, stateSource=${state.diagnostics.stateSource}, isMockData=${state.isMockData}`);
     return DashboardPanel.currentPanel.getCommandResult();
   }
 
@@ -112,10 +116,13 @@ export class DashboardPanel {
         await this.stateManager.refresh(this.stateManager.getState().mode);
         return;
       case "exportSnapshot":
-        await this.panel.webview.postMessage({
-          type: "loading",
-          message: "Export remains intentionally deferred until Phase 11."
-        });
+        await vscode.commands.executeCommand(commandIds.exportSnapshot);
+        return;
+      case "configure":
+        await vscode.commands.executeCommand(commandIds.configure);
+        return;
+      case "focusTimeline":
+        await vscode.commands.executeCommand(commandIds.focusTimeline);
         return;
     }
   }
@@ -124,6 +131,7 @@ export class DashboardPanel {
     const state = this.stateManager.getState();
     this.panel.title = `Live Architecture Map: ${state.mode}`;
     this.panel.webview.html = getDashboardWebviewHtml(this.panel.webview, state, getNonce());
+    logInfo(`dashboard render: title=${this.panel.title}, subtitleSource=${state.isMockData ? "mock" : "live"}`);
   }
 
   private getCommandResult(): DashboardCommandResult {

@@ -14,6 +14,10 @@ export default defineConfig({
   launchArgs: [
     "--disable-gpu",
     "--disable-workspace-trust",
+    "--disable-extensions",
+    "--disable-updates",
+    "--skip-release-notes",
+    "--skip-welcome",
     `--user-data-dir=${path.join(testProfileRoot, "user-data")}`,
     `--extensions-dir=${path.join(testProfileRoot, "extensions")}`
   ]

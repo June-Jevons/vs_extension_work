@@ -1,4 +1,5 @@
 import {
+  BaselineDiff,
   ChangedFile,
   DashboardMode,
   DashboardState,
@@ -14,6 +15,7 @@ export function renderDashboardShell(state: DashboardState): string {
     <main class="dashboard-root" data-testid="dashboard-root" data-mode="${escapeAttribute(state.mode)}">
       <div class="dashboard-shell">
         ${renderTopToolbar(state)}
+        ${renderWorkspaceDiagnosticsPanel(state)}
         <section class="dashboard-mode">
           ${renderModeContent(state)}
         </section>
@@ -27,16 +29,47 @@ export function renderTopToolbar(state: DashboardState): string {
     <header class="dashboard-toolbar">
       <div class="toolbar-title">
         <h1>Live Architecture Map</h1>
-        <p>${escapeHtml(state.workspace.name)} · ${escapeHtml(getModeLabel(state.mode))} · Mock validation state</p>
+        <p>${renderTopSubtitle(state)}</p>
       </div>
       ${renderModeTabs(state)}
       <div class="toolbar-actions" aria-label="Dashboard actions">
         <button class="toolbar-button" type="button" data-command="refresh" title="Refresh dashboard">Refresh</button>
         <button class="toolbar-button" type="button" data-command="exportSnapshot" title="Export snapshot">Export</button>
-        <button class="toolbar-button" type="button" title="Configure extension settings">Configure</button>
-        <button class="toolbar-button" type="button" title="Open structural timeline">Timeline</button>
+        <button class="toolbar-button" type="button" data-command="configure" title="Configure extension settings">Configure</button>
+        <button class="toolbar-button" type="button" data-command="focusTimeline" title="Open structural timeline">Timeline</button>
       </div>
     </header>
+  `;
+}
+
+export function renderWorkspaceDiagnosticsPanel(state: DashboardState): string {
+  const diagnostics = state.diagnostics;
+  const sourceLabel = state.isMockData ? "Mock data" : "Live workspace data";
+  const syntheticLabel = state.isMockData ? "isMockData" : "Synthetic data";
+  const fallback = diagnostics.fallbackReason
+    ? `<span><strong>Fallback</strong>${escapeHtml(diagnostics.fallbackReason)}</span>`
+    : "";
+  const baseline = diagnostics.baselineCapturedAtIso
+    ? `<span><strong>Baseline</strong>${escapeHtml(formatDateTime(diagnostics.baselineCapturedAtIso))}</span>`
+    : `<span><strong>Baseline</strong>Not captured</span>`;
+
+  return `
+    <section class="diagnostics-panel" data-testid="workspace-diagnostics-panel" aria-label="Workspace diagnostics">
+      <span><strong>Workspace</strong>${escapeHtml(diagnostics.rootUri)}</span>
+      <span><strong>Source</strong>${escapeHtml(sourceLabel)}</span>
+      <span><strong>${escapeHtml(syntheticLabel)}</strong>${state.isMockData ? "true" : "false"}</span>
+      <span><strong>Python</strong>${diagnostics.pythonFileCount}</span>
+      <span><strong>Modules</strong>${diagnostics.moduleCount}</span>
+      <span><strong>Dependencies</strong>${diagnostics.dependencyCount}</span>
+      <span><strong>Changed</strong>${diagnostics.changedFileCount}</span>
+      <span><strong>Branch</strong>${escapeHtml(diagnostics.gitBranch)}</span>
+      <span><strong>Git</strong>${escapeHtml(diagnostics.gitStatusSource)}</span>
+      <span><strong>Scanner</strong>${escapeHtml(diagnostics.scannerStatus)}</span>
+      <span><strong>Path</strong>${escapeHtml(formatPathKind(diagnostics.pathKind))}</span>
+      ${baseline}
+      <span><strong>Updated</strong>${escapeHtml(formatDateTime(diagnostics.lastUpdatedIso))}</span>
+      ${fallback}
+    </section>
   `;
 }
 
@@ -46,6 +79,28 @@ export function renderModeTabs(state: DashboardState): string {
       ${dashboardModes.map((mode) => renderModeTab(mode, state.mode)).join("")}
     </nav>
   `;
+}
+
+function renderTopSubtitle(state: DashboardState): string {
+  const status = state.error
+    ? "Analysis error"
+    : state.isLoading
+      ? "Loading workspace data"
+      : state.isMockData
+        ? "Mock data"
+        : "Live workspace data";
+  const diagnostics = state.diagnostics;
+  return [
+    state.workspace.name,
+    getModeLabel(state.mode),
+    status,
+    `Source: ${diagnostics.stateSource === "real" ? "real" : "sample"}`,
+    `Python: ${diagnostics.pythonFileCount}`,
+    `Modules: ${diagnostics.moduleCount}`,
+    `Deps: ${diagnostics.dependencyCount}`,
+    `Changed: ${diagnostics.changedFileCount}`,
+    `Updated: ${formatTime(diagnostics.lastUpdatedIso)}`
+  ].map(escapeHtml).join(" · ");
 }
 
 export function renderLiveChangesMode(state: DashboardState): string {
@@ -128,7 +183,7 @@ export function renderWholeArchitectureMode(state: DashboardState): string {
           <div class="panel-header">
             <div class="panel-heading">
               <h2 class="panel-title">Architecture Views</h2>
-              <p class="panel-subtitle">Static first-pass views.</p>
+              <p class="panel-subtitle">Available architecture views.</p>
             </div>
           </div>
           <div class="panel-body">
@@ -147,7 +202,7 @@ export function renderWholeArchitectureMode(state: DashboardState): string {
           <div class="panel-header">
             <div class="panel-heading">
               <h2 class="panel-title">Feature-Level Architecture Diagram</h2>
-              <p class="panel-subtitle">The full mock architecture grouped by feature block.</p>
+              <p class="panel-subtitle">The full architecture grouped by feature block.</p>
             </div>
             ${renderGraphControls()}
           </div>
@@ -160,7 +215,7 @@ export function renderWholeArchitectureMode(state: DashboardState): string {
             <div class="panel-header">
               <div class="panel-heading">
                 <h2 class="panel-title">Architecture Overview</h2>
-                <p class="panel-subtitle">Static mock summary for the current workspace.</p>
+                <p class="panel-subtitle">Current summary for the active workspace.</p>
               </div>
             </div>
             <div class="panel-body metric-grid">
@@ -391,22 +446,22 @@ export function renderDiffSinceBaselineMode(state: DashboardState): string {
         <div class="baseline-controls" data-testid="baseline-selector">
           <div>
             <strong>Compare baseline</strong>
-            <span class="panel-subtitle">baseline_2024-05-15 to current mock structure</span>
+            <span class="panel-subtitle">${escapeHtml(formatBaselineLabel(diff.baselineCapturedAtIso))} to current structure</span>
           </div>
           <div class="inline-actions">
             <select class="select-control" aria-label="Baseline selector">
-              <option>baseline_2024-05-15</option>
+              <option>${escapeHtml(formatBaselineLabel(diff.baselineCapturedAtIso))}</option>
             </select>
             <button class="primary-action" type="button" data-command="captureBaseline">Capture Baseline</button>
             <button class="toolbar-button" type="button" data-command="showDiffSinceBaseline">Compare</button>
           </div>
         </div>
         <section class="summary-grid" data-testid="baseline-summary-cards">
-          ${renderSummaryCard("Added Modules", diff.addedModules.length, "25% up", "added")}
-          ${renderSummaryCard("Removed Modules", diff.removedModules.length, "14% down", "removed")}
-          ${renderSummaryCard("Changed Modules", diff.changedModules.length, "31% up", "changed")}
-          ${renderSummaryCard("Added Dependencies", diff.addedEdges.length, "18% up", "added")}
-          ${renderSummaryCard("Removed Dependencies", diff.removedEdges.length, "12% down", "removed")}
+          ${renderSummaryCard("Added Modules", diff.addedModules.length, "Modules present only in the current snapshot.", "added")}
+          ${renderSummaryCard("Removed Modules", diff.removedModules.length, "Modules present only in the captured baseline.", "removed")}
+          ${renderSummaryCard("Changed Modules", diff.changedModules.length, "Modules with changed import or risk metadata.", "changed")}
+          ${renderSummaryCard("Added Dependencies", diff.addedEdges.length, "Import edges added after baseline capture.", "added")}
+          ${renderSummaryCard("Removed Dependencies", diff.removedEdges.length, "Import edges removed after baseline capture.", "removed")}
         </section>
         <div class="diff-content-split">
           <section class="panel before-after-panel" data-testid="before-after-graph">
@@ -417,7 +472,7 @@ export function renderDiffSinceBaselineMode(state: DashboardState): string {
               </div>
             </div>
             <div class="panel-body">
-              ${renderBeforeAfterGraph()}
+              ${renderBeforeAfterGraph(diff)}
             </div>
           </section>
           <div class="diff-right-stack">
@@ -472,7 +527,7 @@ export function renderFeatureImpactGraph(state: DashboardState): string {
 }
 
 function getImpactGraphNodes(state: DashboardState): Array<{ id: string; x: number; y: number; w: number; h: number; color: string }> {
-  const mockNodes = [
+  const canonicalNodes = [
     { id: "config-system", x: 30, y: 48, w: 210, h: 105, color: "#ff7b72" },
     { id: "operator-panel-startup", x: 340, y: 48, w: 220, h: 105, color: "#ffa657" },
     { id: "launcher-subprocess-env", x: 650, y: 48, w: 230, h: 105, color: "#58a6ff" },
@@ -480,8 +535,8 @@ function getImpactGraphNodes(state: DashboardState): Array<{ id: string; x: numb
     { id: "tests-config-scanner", x: 220, y: 220, w: 230, h: 95, color: "#76e3ea" }
   ];
 
-  if (mockNodes.some((node) => state.snapshot.featureBlocks.some((feature) => feature.id === node.id))) {
-    return mockNodes;
+  if (canonicalNodes.some((node) => state.snapshot.featureBlocks.some((feature) => feature.id === node.id))) {
+    return canonicalNodes;
   }
 
   const fixedSlots = [
@@ -504,26 +559,24 @@ function getImpactGraphNodes(state: DashboardState): Array<{ id: string; x: numb
 }
 
 export function renderDependencyGraph(state: DashboardState): string {
-  const nodes = [
-    { id: "operator-launcher", label: "operator_panel.launcher", x: 410, y: 30, color: "#b17cff" },
-    { id: "runtime-config", label: "abb_common.config.runtime_config", x: 170, y: 125, color: "#b17cff" },
-    { id: "ros-launcher", label: "launch.ros_launcher", x: 650, y: 125, color: "#58a6ff" },
-    { id: "config-loader", label: "abb_common.config.config_loader", x: 180, y: 245, color: "#4f7cff" },
-    { id: "env-loader", label: "abb_common.config.env_loader", x: 415, y: 245, color: "#816bff" },
-    { id: "test-runtime-config", label: "tests.config.test_runtime_config", x: 665, y: 245, color: "#4f7cff" }
-  ];
+  const nodes = getDependencyGraphNodes(state);
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const edges = state.snapshot.dependencies
+    .filter((edge) => nodeMap.has(edge.from) && nodeMap.has(edge.to))
+    .slice(0, 16);
 
   return `
     <div class="graph-stage">
       <svg class="graph-svg" viewBox="0 0 800 320" role="img" aria-label="Dependency graph">
         ${renderSvgDefs()}
-        <path class="edge-line" d="M410 52 L190 118" />
-        <path class="edge-line" d="M430 52 L650 118" />
-        <path class="edge-line" d="M190 147 L190 224" />
-        <path class="edge-line" d="M220 135 L390 235" />
-        <path class="edge-line" d="M640 147 L435 235" />
-        <path class="edge-line" d="M650 147 L665 224" />
-        <path class="edge-line" d="M410 224 V62" />
+        ${edges.map((edge) => {
+          const from = nodeMap.get(edge.from);
+          const to = nodeMap.get(edge.to);
+          if (!from || !to) {
+            return "";
+          }
+          return `<path class="edge-line${edge.kind === "test" ? " dashed" : ""}" d="M${from.x} ${from.y} L${to.x} ${to.y}" />`;
+        }).join("")}
         ${nodes.map((node) => `
           <g>
             <circle cx="${node.x}" cy="${node.y}" r="13" fill="${node.color}" stroke="#d7dde6" stroke-width="1.2" />
@@ -533,6 +586,39 @@ export function renderDependencyGraph(state: DashboardState): string {
       </svg>
     </div>
   `;
+}
+
+function getDependencyGraphNodes(state: DashboardState): Array<{ id: string; label: string; x: number; y: number; color: string }> {
+  const slots = [
+    { x: 410, y: 30, color: "#b17cff" },
+    { x: 170, y: 125, color: "#b17cff" },
+    { x: 650, y: 125, color: "#58a6ff" },
+    { x: 180, y: 245, color: "#4f7cff" },
+    { x: 415, y: 245, color: "#816bff" },
+    { x: 665, y: 245, color: "#4f7cff" },
+    { x: 55, y: 35, color: "#7ee787" },
+    { x: 735, y: 40, color: "#ffa657" }
+  ];
+  const changedModuleIds = state.snapshot.changedFiles
+    .map((file) => file.moduleId)
+    .filter((moduleId): moduleId is string => typeof moduleId === "string");
+  const dependencyModuleIds = state.snapshot.dependencies.flatMap((edge) => [edge.from, edge.to]);
+  const orderedIds = uniqueStrings([
+    ...changedModuleIds,
+    ...dependencyModuleIds,
+    ...state.snapshot.modules.map((moduleNode) => moduleNode.id)
+  ]).slice(0, slots.length);
+  const modulesById = new Map(state.snapshot.modules.map((moduleNode) => [moduleNode.id, moduleNode]));
+
+  return orderedIds.map((id, index) => {
+    const slot = slots[index]!;
+    const moduleNode = modulesById.get(id);
+    return {
+      id,
+      label: shortenModuleLabel(moduleNode?.packageName ?? moduleNode?.name ?? id),
+      ...slot
+    };
+  });
 }
 
 export function renderChangedFilesTable(state: DashboardState): string {
@@ -662,7 +748,7 @@ function renderRiskCard(testId: string, risk: { label: string; count: number; de
   const fallback = {
     label: capitalize(level),
     count: 0,
-    detail: "No mock risk items."
+    detail: "No risk items."
   };
   const card = risk ?? fallback;
 
@@ -749,14 +835,26 @@ function renderInternalDependencyGraph(modules: ModuleNode[]): string {
       y: Math.round(centerY + Math.sin(angle) * radius)
     };
   });
+  const nodeById = new Map(nodes.map((node) => [node.moduleNode.id, node]));
+  const edges = visibleModules.flatMap((moduleNode) => moduleNode.imports
+    .filter((targetId) => nodeById.has(targetId))
+    .map((targetId) => ({ from: moduleNode.id, to: targetId })))
+    .slice(0, 12);
 
   return `
     <div class="graph-stage">
       <svg class="graph-svg" viewBox="0 0 780 320" role="img" aria-label="Internal dependency graph">
         ${renderSvgDefs()}
-        ${nodes.map((node, index) => {
-          const target = nodes[(index + 2) % nodes.length] ?? node;
-          return `<path class="edge-line" d="M${node.x} ${node.y} L${target.x} ${target.y}" />`;
+        ${(edges.length > 0 ? edges : nodes.map((node, index) => ({
+          from: node.moduleNode.id,
+          to: nodes[(index + 1) % nodes.length]?.moduleNode.id ?? node.moduleNode.id
+        }))).map((edge) => {
+          const from = nodeById.get(edge.from);
+          const to = nodeById.get(edge.to);
+          if (!from || !to || from.moduleNode.id === to.moduleNode.id) {
+            return "";
+          }
+          return `<path class="edge-line" d="M${from.x} ${from.y} L${to.x} ${to.y}" />`;
         }).join("")}
         ${nodes.map((node) => `
           <g>
@@ -769,13 +867,13 @@ function renderInternalDependencyGraph(modules: ModuleNode[]): string {
   `;
 }
 
-function renderBeforeAfterGraph(): string {
+function renderBeforeAfterGraph(diff: BaselineDiff): string {
   return `
     <div class="graph-stage">
       <svg class="graph-svg" viewBox="0 0 920 430" role="img" aria-label="Before after dependency graph">
         ${renderSvgDefs()}
-        <text x="60" y="40" class="node-small">Before baseline_2024-05-15</text>
-        <text x="540" y="40" class="node-small">After current</text>
+        <text x="60" y="40" class="node-small">Before ${escapeHtml(formatShortDate(diff.baselineCapturedAtIso))}</text>
+        <text x="540" y="40" class="node-small">After ${escapeHtml(formatShortDate(diff.currentCapturedAtIso))}</text>
         ${renderMiniNetwork(170, 205, "#b17cff", false)}
         <path class="edge-line" d="M410 215 H510" />
         <text x="443" y="198" class="node-label">Diff</text>
@@ -880,11 +978,40 @@ function renderSummaryCard(label: string, value: number, detail: string, tone: "
 }
 
 function renderTopChangesTable(state: DashboardState): string {
-  const rows = state.snapshot.changedFiles.map((file, index) => ({
-    path: file.path,
-    type: index % 2 === 0 ? "Changed deps" : "Changed module",
-    deps: `+${index + 2} deps`
-  }));
+  const diff = state.baselineDiff;
+  const rows = diff
+    ? [
+      ...diff.addedModules.map((moduleNode) => ({
+        path: moduleNode.path,
+        type: "Added module",
+        deps: `${moduleNode.imports.length} imports`
+      })),
+      ...diff.removedModules.map((moduleNode) => ({
+        path: moduleNode.path,
+        type: "Removed module",
+        deps: `${moduleNode.imports.length} imports`
+      })),
+      ...diff.changedModules.map((moduleNode) => ({
+        path: moduleNode.path,
+        type: "Changed module",
+        deps: `${moduleNode.imports.length} imports`
+      })),
+      ...diff.addedEdges.map((edge) => ({
+        path: `${edge.from} -> ${edge.to}`,
+        type: "Added dependency",
+        deps: edge.kind
+      })),
+      ...diff.removedEdges.map((edge) => ({
+        path: `${edge.from} -> ${edge.to}`,
+        type: "Removed dependency",
+        deps: edge.kind
+      }))
+    ].slice(0, 12)
+    : state.snapshot.changedFiles.map((file) => ({
+      path: file.path,
+      type: "Changed file",
+      deps: file.status
+    }));
 
   return `
     <table class="data-table">
@@ -897,14 +1024,21 @@ function renderTopChangesTable(state: DashboardState): string {
         </tr>
       </thead>
       <tbody>
-        ${rows.map((row, index) => `
+        ${rows.length > 0 ? rows.map((row, index) => `
           <tr>
             <td>${index + 1}</td>
             <td class="path-cell">${escapeHtml(row.path)}</td>
             <td>${escapeHtml(row.type)}</td>
             <td class="test-state">${escapeHtml(row.deps)}</td>
           </tr>
-        `).join("")}
+        `).join("") : `
+          <tr>
+            <td>1</td>
+            <td class="path-cell">No structural changes detected</td>
+            <td>Stable</td>
+            <td class="test-state">0</td>
+          </tr>
+        `}
       </tbody>
     </table>
   `;
@@ -1016,6 +1150,62 @@ function formatTime(value: string): string {
     second: "2-digit",
     hour12: false
   });
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("en-AU", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+}
+
+function formatShortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value.slice(0, 10);
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function formatBaselineLabel(value: string): string {
+  return `baseline_${formatShortDate(value)}`;
+}
+
+function formatPathKind(value: DashboardState["diagnostics"]["pathKind"]): string {
+  switch (value) {
+    case "unc-wsl":
+      return "UNC WSL";
+    case "unc":
+      return "UNC";
+    case "local":
+      return "Local";
+    case "unknown":
+      return "Unknown";
+  }
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function shortenModuleLabel(value: string): string {
+  if (value.length <= 42) {
+    return value;
+  }
+  const parts = value.split(".");
+  if (parts.length > 2) {
+    return `${parts.slice(0, 2).join(".")}...${parts.at(-1) ?? ""}`;
+  }
+  return `${value.slice(0, 38)}...`;
 }
 
 function capitalize(value: string): string {

@@ -284,7 +284,7 @@ const validations: ValidationStatus[] = [
     id: "compile",
     label: "Compile Check",
     state: "passed",
-    detail: "Extension and mock analysis compile.",
+    detail: "Extension and dashboard analysis compile.",
     durationMs: 3400
   },
   {
@@ -365,6 +365,23 @@ export function createMockDashboardState(
     snapshot,
     selectedFeatureId: safeSelectedFeatureId,
     baselineDiff,
+    diagnostics: {
+      rootUri: snapshot.rootUri,
+      workspaceFsPath: "C:\\Users\\Junekim\\Work\\ABB_ROS2",
+      pathKind: "local",
+      stateSource: "mock",
+      fallbackReason: "Bundled sample data is active.",
+      pythonFileCount: snapshot.health.totalPythonFiles,
+      moduleCount: snapshot.modules.length,
+      dependencyCount: snapshot.dependencies.length,
+      changedFileCount: snapshot.changedFiles.length,
+      gitBranch: snapshot.git?.branch ?? "unknown",
+      gitStatusSource: "unavailable",
+      scannerStatus: "mock fallback",
+      discoveredFileCount: snapshot.health.totalPythonFiles,
+      lastUpdatedIso: capturedAtIso,
+      baselineCapturedAtIso: baselineDiff.baselineCapturedAtIso
+    },
     isMockData: true,
     isLoading: false
   };

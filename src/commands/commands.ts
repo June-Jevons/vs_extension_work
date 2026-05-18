@@ -5,6 +5,8 @@ export const commandIds = {
   showDiffSinceBaseline: "liveArchitectureMap.showDiffSinceBaseline",
   focusFeature: "liveArchitectureMap.focusFeature",
   exportSnapshot: "liveArchitectureMap.exportSnapshot",
+  configure: "liveArchitectureMap.configure",
+  focusTimeline: "liveArchitectureMap.focusTimeline",
   clearWorkspaceCache: "liveArchitectureMap.clearWorkspaceCache",
-  openMockFile: "liveArchitectureMap.openMockFile"
+  openWorkspaceFile: "liveArchitectureMap.openWorkspaceFile"
 } as const;

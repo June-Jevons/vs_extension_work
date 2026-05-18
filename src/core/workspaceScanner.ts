@@ -3,6 +3,13 @@ import { mapFeatureForPath } from "./featureMapper";
 import { ModuleNode } from "../webview/dashboardState";
 import { ModuleImportRecord } from "../graph/dependencyGraph";
 import { parsePythonImports } from "../graph/importParser";
+import { logInfo } from "./outputChannel";
+import {
+  DirectoryEntryLike,
+  isWatchedScanPath,
+  scanReadDirectoryTree,
+  shouldExcludePath
+} from "./readDirectoryFallbackScanner";
 
 export interface WorkspaceScanConfig {
   excludeGlobs: string[];
@@ -16,6 +23,9 @@ export interface WorkspaceScanResult {
   totalClasses: number;
   totalFunctions: number;
   unreadableFiles: string[];
+  discoveredFileCount: number;
+  scannerStatus: "findFiles" | "readDirectory fallback";
+  fallbackReason?: string;
 }
 
 const WATCHED_SCAN_GLOBS = [
@@ -34,10 +44,12 @@ export async function scanWorkspace(
   folder: vscode.WorkspaceFolder,
   config: WorkspaceScanConfig
 ): Promise<WorkspaceScanResult> {
-  const uris = await findWorkspaceFiles(folder, config);
+  logInfo(`scan start: workspace=${folder.uri.toString()}`);
+  const foundFiles = await findWorkspaceFiles(folder, config);
+  const uris = foundFiles.uris;
   const modules: ModuleNode[] = [];
   const importRecords: ModuleImportRecord[] = [];
-  const unreadableFiles: string[] = [];
+  const unreadableFiles: string[] = [...foundFiles.unreadableFiles];
   let totalClasses = 0;
   let totalFunctions = 0;
 
@@ -81,14 +93,21 @@ export async function scanWorkspace(
     });
   }
 
-  return {
+  const result = {
     modules,
     importRecords,
     totalPythonFiles: modules.length,
     totalClasses,
     totalFunctions,
-    unreadableFiles
+    unreadableFiles,
+    discoveredFileCount: uris.length,
+    scannerStatus: foundFiles.scannerStatus,
+    fallbackReason: foundFiles.fallbackReason
   };
+  logInfo(
+    `scan end: discoveredFiles=${result.discoveredFileCount}, pythonModules=${result.modules.length}, scannerStatus=${result.scannerStatus}${result.fallbackReason ? `, fallbackReason=${result.fallbackReason}` : ""}`
+  );
+  return result;
 }
 
 export function moduleIdFromPath(relativePath: string): string {
@@ -107,7 +126,12 @@ export function normalizeRelativePath(rootUri: vscode.Uri, uri: vscode.Uri): str
 async function findWorkspaceFiles(
   folder: vscode.WorkspaceFolder,
   config: WorkspaceScanConfig
-): Promise<vscode.Uri[]> {
+): Promise<{
+  uris: vscode.Uri[];
+  scannerStatus: "findFiles" | "readDirectory fallback";
+  fallbackReason?: string;
+  unreadableFiles: string[];
+}> {
   const byPath = new Map<string, vscode.Uri>();
   const maxPerGlob = Math.max(config.maxFilesToAnalyze, 1);
 
@@ -125,12 +149,57 @@ async function findWorkspaceFiles(
       }
       byPath.set(relativePath, uri);
       if (byPath.size >= config.maxFilesToAnalyze) {
-        return [...byPath.values()];
+        return {
+          uris: [...byPath.values()],
+          scannerStatus: "findFiles",
+          unreadableFiles: []
+        };
       }
     }
   }
 
-  return [...byPath.values()];
+  const findFilesUris = [...byPath.values()];
+  const pythonFileCount = findFilesUris.filter((uri) => normalizeRelativePath(folder.uri, uri).endsWith(".py")).length;
+  if (pythonFileCount > 0) {
+    return {
+      uris: findFilesUris,
+      scannerStatus: "findFiles",
+      unreadableFiles: []
+    };
+  }
+
+  const fallbackReason = "vscode.workspace.findFiles returned zero Python files; using readDirectory recursion.";
+  logInfo(`scanner fallback: ${fallbackReason}`);
+  const fallback = await scanReadDirectoryTree(folder.uri, config, {
+    readDirectory: async (location) => {
+      const entries = await vscode.workspace.fs.readDirectory(location);
+      return entries.map(([name, fileType]): DirectoryEntryLike => ({
+        name,
+        kind: mapFileType(fileType)
+      }));
+    },
+    joinPath: (location, segment) => vscode.Uri.joinPath(location, segment),
+    relativePath: (root, location) => normalizeRelativePath(root, location)
+  });
+
+  const merged = new Map(byPath);
+  for (const uri of fallback.files) {
+    const relativePath = normalizeRelativePath(folder.uri, uri);
+    if (!isWatchedScanPath(relativePath) || shouldExcludePath(relativePath, config.excludeGlobs)) {
+      continue;
+    }
+    merged.set(relativePath, uri);
+    if (merged.size >= config.maxFilesToAnalyze) {
+      break;
+    }
+  }
+
+  return {
+    uris: [...merged.values()],
+    scannerStatus: "readDirectory fallback",
+    fallbackReason,
+    unreadableFiles: fallback.unreadablePaths
+  };
 }
 
 function buildExcludePattern(excludeGlobs: string[]): string | undefined {
@@ -141,28 +210,22 @@ function buildExcludePattern(excludeGlobs: string[]): string | undefined {
   return excludeGlobs.length === 1 ? excludeGlobs[0] : `{${excludeGlobs.join(",")}}`;
 }
 
-function shouldExcludePath(relativePath: string, excludeGlobs: string[]): boolean {
-  const normalized = relativePath.replaceAll("\\", "/").toLowerCase();
-  return excludeGlobs.some((glob) => {
-    const lowerGlob = glob.replaceAll("\\", "/").toLowerCase();
-    const segmentMatch = /^\*\*\/([^/]+)\/\*\*$/.exec(lowerGlob);
-    if (segmentMatch?.[1]) {
-      return normalized.split("/").includes(segmentMatch[1]);
-    }
-    const suffixMatch = /^\*\*\/(.+)$/.exec(lowerGlob);
-    if (suffixMatch?.[1]) {
-      return normalized.endsWith(suffixMatch[1].replace("/**", ""));
-    }
-    return normalized.includes(lowerGlob.replaceAll("*", ""));
-  });
-}
-
 function isLikelyEntryPoint(relativePath: string, source: string): boolean {
   const normalized = relativePath.toLowerCase();
   return /\b(main|launcher|launch|startup|setup)\.py$/.test(normalized)
     || normalized.includes("/launch/")
     || source.includes("if __name__ == \"__main__\"")
     || source.includes("if __name__ == '__main__'");
+}
+
+function mapFileType(fileType: vscode.FileType): DirectoryEntryLike["kind"] {
+  if ((fileType & vscode.FileType.Directory) === vscode.FileType.Directory) {
+    return "directory";
+  }
+  if ((fileType & vscode.FileType.File) === vscode.FileType.File) {
+    return "file";
+  }
+  return "other";
 }
 
 function isTestPath(relativePath: string): boolean {
