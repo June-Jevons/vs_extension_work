@@ -1,16 +1,20 @@
-import {
-  ChangedFile,
-  DashboardMode,
-  DashboardState,
-  FeatureBlock,
-  ModuleNode,
-  ValidationStatus,
-  dashboardModes,
-  getModeLabel
-} from "./dashboardState";
-
-export function renderDashboardShell(state: DashboardState): string {
-  return `
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.renderDashboardShell = renderDashboardShell;
+exports.renderTopToolbar = renderTopToolbar;
+exports.renderModeTabs = renderModeTabs;
+exports.renderLiveChangesMode = renderLiveChangesMode;
+exports.renderWholeArchitectureMode = renderWholeArchitectureMode;
+exports.renderFeatureFocusMode = renderFeatureFocusMode;
+exports.renderDiffSinceBaselineMode = renderDiffSinceBaselineMode;
+exports.renderFeatureImpactGraph = renderFeatureImpactGraph;
+exports.renderDependencyGraph = renderDependencyGraph;
+exports.renderChangedFilesTable = renderChangedFilesTable;
+exports.renderValidationStatus = renderValidationStatus;
+exports.escapeHtml = escapeHtml;
+const dashboardState_1 = require("./dashboardState");
+function renderDashboardShell(state) {
+    return `
     <main class="dashboard-root" data-testid="dashboard-root" data-mode="${escapeAttribute(state.mode)}">
       <div class="dashboard-shell">
         ${renderTopToolbar(state)}
@@ -21,13 +25,12 @@ export function renderDashboardShell(state: DashboardState): string {
     </main>
   `;
 }
-
-export function renderTopToolbar(state: DashboardState): string {
-  return `
+function renderTopToolbar(state) {
+    return `
     <header class="dashboard-toolbar">
       <div class="toolbar-title">
         <h1>Live Architecture Map</h1>
-        <p>${escapeHtml(state.workspace.name)} · ${escapeHtml(getModeLabel(state.mode))} · Mock validation state</p>
+        <p>${escapeHtml(state.workspace.name)} · ${escapeHtml((0, dashboardState_1.getModeLabel)(state.mode))} · Mock validation state</p>
       </div>
       ${renderModeTabs(state)}
       <div class="toolbar-actions" aria-label="Dashboard actions">
@@ -39,17 +42,15 @@ export function renderTopToolbar(state: DashboardState): string {
     </header>
   `;
 }
-
-export function renderModeTabs(state: DashboardState): string {
-  return `
+function renderModeTabs(state) {
+    return `
     <nav class="mode-tabs" aria-label="Dashboard modes">
-      ${dashboardModes.map((mode) => renderModeTab(mode, state.mode)).join("")}
+      ${dashboardState_1.dashboardModes.map((mode) => renderModeTab(mode, state.mode)).join("")}
     </nav>
   `;
 }
-
-export function renderLiveChangesMode(state: DashboardState): string {
-  return `
+function renderLiveChangesMode(state) {
+    return `
     <div class="live-grid">
       ${renderCurrentChangeArea(state)}
       <section class="panel large-graph-panel" data-testid="architecture-impact-graph">
@@ -83,11 +84,9 @@ export function renderLiveChangesMode(state: DashboardState): string {
     </div>
   `;
 }
-
-export function renderWholeArchitectureMode(state: DashboardState): string {
-  const architectureFeatures = getArchitectureFeatures(state);
-
-  return `
+function renderWholeArchitectureMode(state) {
+    const architectureFeatures = getArchitectureFeatures(state);
+    return `
     <div class="whole-layout">
       <aside class="mode-sidebar">
         <section class="panel">
@@ -189,16 +188,14 @@ export function renderWholeArchitectureMode(state: DashboardState): string {
     </div>
   `;
 }
-
-export function renderFeatureFocusMode(state: DashboardState): string {
-  const selectedFeature = getSelectedFeature(state);
-  const selectedModules = getModulesForFeature(state, selectedFeature.id);
-  const externalFeatures = state.snapshot.featureBlocks
-    .filter((feature) => feature.id !== selectedFeature.id)
-    .slice(0, 4);
-  const tests = state.snapshot.modules.filter((moduleNode) => moduleNode.isTest).slice(0, 5);
-
-  return `
+function renderFeatureFocusMode(state) {
+    const selectedFeature = getSelectedFeature(state);
+    const selectedModules = getModulesForFeature(state, selectedFeature.id);
+    const externalFeatures = state.snapshot.featureBlocks
+        .filter((feature) => feature.id !== selectedFeature.id)
+        .slice(0, 4);
+    const tests = state.snapshot.modules.filter((moduleNode) => moduleNode.isTest).slice(0, 5);
+    return `
     <div class="feature-layout">
       <aside class="mode-sidebar">
         <section class="panel">
@@ -332,12 +329,10 @@ export function renderFeatureFocusMode(state: DashboardState): string {
     </div>
   `;
 }
-
-export function renderDiffSinceBaselineMode(state: DashboardState): string {
-  const diff = state.baselineDiff;
-
-  if (!diff) {
-    return `
+function renderDiffSinceBaselineMode(state) {
+    const diff = state.baselineDiff;
+    if (!diff) {
+        return `
       <section class="panel empty-baseline" data-testid="baseline-selector">
         <div>
           <h2>No baseline captured yet</h2>
@@ -346,9 +341,8 @@ export function renderDiffSinceBaselineMode(state: DashboardState): string {
         </div>
       </section>
     `;
-  }
-
-  return `
+    }
+    return `
     <div class="diff-layout">
       <aside class="mode-sidebar">
         <section class="panel">
@@ -449,18 +443,16 @@ export function renderDiffSinceBaselineMode(state: DashboardState): string {
     </div>
   `;
 }
-
-export function renderFeatureImpactGraph(state: DashboardState): string {
-  const graphNodes = [
-    { id: "config-system", x: 30, y: 48, w: 210, h: 105, color: "#ff7b72" },
-    { id: "operator-panel-startup", x: 340, y: 48, w: 220, h: 105, color: "#ffa657" },
-    { id: "launcher-subprocess-env", x: 650, y: 48, w: 230, h: 105, color: "#58a6ff" },
-    { id: "ros-launch-runtime", x: 960, y: 48, w: 220, h: 105, color: "#7ee787" },
-    { id: "tests-config-scanner", x: 220, y: 220, w: 230, h: 95, color: "#76e3ea" }
-  ];
-  const featureMap = new Map(state.snapshot.featureBlocks.map((feature) => [feature.id, feature]));
-
-  return `
+function renderFeatureImpactGraph(state) {
+    const graphNodes = [
+        { id: "config-system", x: 30, y: 48, w: 210, h: 105, color: "#ff7b72" },
+        { id: "operator-panel-startup", x: 340, y: 48, w: 220, h: 105, color: "#ffa657" },
+        { id: "launcher-subprocess-env", x: 650, y: 48, w: 230, h: 105, color: "#58a6ff" },
+        { id: "ros-launch-runtime", x: 960, y: 48, w: 220, h: 105, color: "#7ee787" },
+        { id: "tests-config-scanner", x: 220, y: 220, w: 230, h: 95, color: "#76e3ea" }
+    ];
+    const featureMap = new Map(state.snapshot.featureBlocks.map((feature) => [feature.id, feature]));
+    return `
     <div class="graph-stage">
       <svg class="graph-svg" viewBox="0 0 1220 360" role="img" aria-label="Feature impact graph">
         ${renderSvgDefs()}
@@ -476,18 +468,16 @@ export function renderFeatureImpactGraph(state: DashboardState): string {
     </div>
   `;
 }
-
-export function renderDependencyGraph(state: DashboardState): string {
-  const nodes = [
-    { id: "operator-launcher", label: "operator_panel.launcher", x: 410, y: 30, color: "#b17cff" },
-    { id: "runtime-config", label: "abb_common.config.runtime_config", x: 170, y: 125, color: "#b17cff" },
-    { id: "ros-launcher", label: "launch.ros_launcher", x: 650, y: 125, color: "#58a6ff" },
-    { id: "config-loader", label: "abb_common.config.config_loader", x: 180, y: 245, color: "#4f7cff" },
-    { id: "env-loader", label: "abb_common.config.env_loader", x: 415, y: 245, color: "#816bff" },
-    { id: "test-runtime-config", label: "tests.config.test_runtime_config", x: 665, y: 245, color: "#4f7cff" }
-  ];
-
-  return `
+function renderDependencyGraph(state) {
+    const nodes = [
+        { id: "operator-launcher", label: "operator_panel.launcher", x: 410, y: 30, color: "#b17cff" },
+        { id: "runtime-config", label: "abb_common.config.runtime_config", x: 170, y: 125, color: "#b17cff" },
+        { id: "ros-launcher", label: "launch.ros_launcher", x: 650, y: 125, color: "#58a6ff" },
+        { id: "config-loader", label: "abb_common.config.config_loader", x: 180, y: 245, color: "#4f7cff" },
+        { id: "env-loader", label: "abb_common.config.env_loader", x: 415, y: 245, color: "#816bff" },
+        { id: "test-runtime-config", label: "tests.config.test_runtime_config", x: 665, y: 245, color: "#4f7cff" }
+    ];
+    return `
     <div class="graph-stage">
       <svg class="graph-svg" viewBox="0 0 800 320" role="img" aria-label="Dependency graph">
         ${renderSvgDefs()}
@@ -508,9 +498,8 @@ export function renderDependencyGraph(state: DashboardState): string {
     </div>
   `;
 }
-
-export function renderChangedFilesTable(state: DashboardState): string {
-  return `
+function renderChangedFilesTable(state) {
+    return `
     <section class="panel" data-testid="changed-files-table">
       <div class="panel-header">
         <div class="panel-heading">
@@ -536,9 +525,8 @@ export function renderChangedFilesTable(state: DashboardState): string {
     </section>
   `;
 }
-
-export function renderValidationStatus(state: DashboardState): string {
-  return `
+function renderValidationStatus(state) {
+    return `
     <section class="panel" data-testid="validation-status-row">
       <div class="panel-header">
         <div class="panel-heading">
@@ -552,24 +540,21 @@ export function renderValidationStatus(state: DashboardState): string {
     </section>
   `;
 }
-
-function renderModeContent(state: DashboardState): string {
-  switch (state.mode) {
-    case "liveChanges":
-      return renderLiveChangesMode(state);
-    case "wholeArchitecture":
-      return renderWholeArchitectureMode(state);
-    case "featureFocus":
-      return renderFeatureFocusMode(state);
-    case "diffSinceBaseline":
-      return renderDiffSinceBaselineMode(state);
-  }
+function renderModeContent(state) {
+    switch (state.mode) {
+        case "liveChanges":
+            return renderLiveChangesMode(state);
+        case "wholeArchitecture":
+            return renderWholeArchitectureMode(state);
+        case "featureFocus":
+            return renderFeatureFocusMode(state);
+        case "diffSinceBaseline":
+            return renderDiffSinceBaselineMode(state);
+    }
 }
-
-function renderCurrentChangeArea(state: DashboardState): string {
-  const risks = state.snapshot.risks;
-
-  return `
+function renderCurrentChangeArea(state) {
+    const risks = state.snapshot.risks;
+    return `
     <section class="panel" data-testid="current-change-area">
       <div class="panel-body current-change-grid">
         <div>
@@ -594,22 +579,20 @@ function renderCurrentChangeArea(state: DashboardState): string {
     </section>
   `;
 }
-
-function renderModeTab(mode: DashboardMode, currentMode: DashboardMode): string {
-  const isActive = mode === currentMode;
-  return `
+function renderModeTab(mode, currentMode) {
+    const isActive = mode === currentMode;
+    return `
     <button
       class="mode-tab${isActive ? " active" : ""}"
       type="button"
       data-testid="mode-${escapeAttribute(mode)}"
       data-mode="${escapeAttribute(mode)}"
       aria-pressed="${isActive ? "true" : "false"}"
-    >${escapeHtml(getModeLabel(mode))}</button>
+    >${escapeHtml((0, dashboardState_1.getModeLabel)(mode))}</button>
   `;
 }
-
-function renderGraphControls(): string {
-  return `
+function renderGraphControls() {
+    return `
     <div class="panel-actions">
       <select class="select-control" aria-label="Graph layout">
         <option>Layout: LR</option>
@@ -619,9 +602,8 @@ function renderGraphControls(): string {
     </div>
   `;
 }
-
-function renderZoomControls(): string {
-  return `
+function renderZoomControls() {
+    return `
     <div class="panel-actions" aria-label="Graph zoom controls">
       <span class="panel-subtitle">Zoom</span>
       <button class="icon-button" type="button" title="Zoom out">-</button>
@@ -630,16 +612,14 @@ function renderZoomControls(): string {
     </div>
   `;
 }
-
-function renderRiskCard(testId: string, risk: { label: string; count: number; detail: string } | undefined, level: "high" | "medium" | "low"): string {
-  const fallback = {
-    label: capitalize(level),
-    count: 0,
-    detail: "No mock risk items."
-  };
-  const card = risk ?? fallback;
-
-  return `
+function renderRiskCard(testId, risk, level) {
+    const fallback = {
+        label: capitalize(level),
+        count: 0,
+        detail: "No mock risk items."
+    };
+    const card = risk ?? fallback;
+    return `
     <article class="risk-card ${level}" data-testid="${testId}">
       <div class="risk-label">${escapeHtml(card.label)}</div>
       <div class="risk-value">${card.count}</div>
@@ -647,24 +627,22 @@ function renderRiskCard(testId: string, risk: { label: string; count: number; de
     </article>
   `;
 }
-
-function renderFeatureNode(feature: FeatureBlock | undefined, x: number, y: number, width: number, height: number, color: string): string {
-  const safeFeature = feature ?? {
-    id: "unknown",
-    label: "Unknown",
-    description: "",
-    pathPatterns: [],
-    moduleIds: [],
-    incomingEdges: 0,
-    outgoingEdges: 0,
-    changedFileCount: 0,
-    riskLevel: "low" as const
-  };
-  const moduleLines = safeFeature.moduleIds.slice(0, 3).map((moduleId, index) => `
+function renderFeatureNode(feature, x, y, width, height, color) {
+    const safeFeature = feature ?? {
+        id: "unknown",
+        label: "Unknown",
+        description: "",
+        pathPatterns: [],
+        moduleIds: [],
+        incomingEdges: 0,
+        outgoingEdges: 0,
+        changedFileCount: 0,
+        riskLevel: "low"
+    };
+    const moduleLines = safeFeature.moduleIds.slice(0, 3).map((moduleId, index) => `
     <text x="${x + 14}" y="${y + 47 + index * 20}" class="node-small">${escapeHtml(moduleId.replaceAll("-", "_"))}</text>
   `).join("");
-
-  return `
+    return `
     <g class="feature-node">
       <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="${color}20" stroke="${color}" />
       <text x="${x + 14}" y="${y + 25}" class="node-label" fill="${color}">${escapeHtml(safeFeature.label)}</text>
@@ -674,21 +652,19 @@ function renderFeatureNode(feature: FeatureBlock | undefined, x: number, y: numb
     </g>
   `;
 }
-
-function renderWholeArchitectureGraph(state: DashboardState): string {
-  const nodes = [
-    { id: "gui-layer", x: 40, y: 50, w: 150, h: 120, color: "#b17cff" },
-    { id: "task-runner", x: 260, y: 50, w: 170, h: 120, color: "#ffa657" },
-    { id: "motion-planning", x: 520, y: 50, w: 180, h: 120, color: "#58a6ff" },
-    { id: "safety-layer", x: 780, y: 50, w: 160, h: 120, color: "#76e3ea" },
-    { id: "robot-io-layer", x: 1020, y: 50, w: 165, h: 120, color: "#f2cc60" },
-    { id: "abb-controller", x: 1260, y: 70, w: 155, h: 100, color: "#b17cff" },
-    { id: "config-system", x: 200, y: 250, w: 210, h: 120, color: "#7ee787" },
-    { id: "utils-common", x: 560, y: 250, w: 190, h: 120, color: "#8d99a8" }
-  ];
-  const featureMap = new Map(state.snapshot.featureBlocks.map((feature) => [feature.id, feature]));
-
-  return `
+function renderWholeArchitectureGraph(state) {
+    const nodes = [
+        { id: "gui-layer", x: 40, y: 50, w: 150, h: 120, color: "#b17cff" },
+        { id: "task-runner", x: 260, y: 50, w: 170, h: 120, color: "#ffa657" },
+        { id: "motion-planning", x: 520, y: 50, w: 180, h: 120, color: "#58a6ff" },
+        { id: "safety-layer", x: 780, y: 50, w: 160, h: 120, color: "#76e3ea" },
+        { id: "robot-io-layer", x: 1020, y: 50, w: 165, h: 120, color: "#f2cc60" },
+        { id: "abb-controller", x: 1260, y: 70, w: 155, h: 100, color: "#b17cff" },
+        { id: "config-system", x: 200, y: 250, w: 210, h: 120, color: "#7ee787" },
+        { id: "utils-common", x: 560, y: 250, w: 190, h: 120, color: "#8d99a8" }
+    ];
+    const featureMap = new Map(state.snapshot.featureBlocks.map((feature) => [feature.id, feature]));
+    return `
     <div class="graph-stage">
       <svg class="graph-svg" viewBox="0 0 1460 430" role="img" aria-label="Whole architecture diagram">
         ${renderSvgDefs()}
@@ -707,30 +683,28 @@ function renderWholeArchitectureGraph(state: DashboardState): string {
     </div>
   `;
 }
-
-function renderInternalDependencyGraph(modules: ModuleNode[]): string {
-  const visibleModules = modules.slice(0, 8);
-  const nodeCount = Math.max(visibleModules.length, 1);
-  const centerX = 390;
-  const centerY = 160;
-  const radius = 105;
-  const nodes = visibleModules.map((moduleNode, index) => {
-    const angle = (Math.PI * 2 * index) / nodeCount - Math.PI / 2;
-    return {
-      moduleNode,
-      x: Math.round(centerX + Math.cos(angle) * radius),
-      y: Math.round(centerY + Math.sin(angle) * radius)
-    };
-  });
-
-  return `
+function renderInternalDependencyGraph(modules) {
+    const visibleModules = modules.slice(0, 8);
+    const nodeCount = Math.max(visibleModules.length, 1);
+    const centerX = 390;
+    const centerY = 160;
+    const radius = 105;
+    const nodes = visibleModules.map((moduleNode, index) => {
+        const angle = (Math.PI * 2 * index) / nodeCount - Math.PI / 2;
+        return {
+            moduleNode,
+            x: Math.round(centerX + Math.cos(angle) * radius),
+            y: Math.round(centerY + Math.sin(angle) * radius)
+        };
+    });
+    return `
     <div class="graph-stage">
       <svg class="graph-svg" viewBox="0 0 780 320" role="img" aria-label="Internal dependency graph">
         ${renderSvgDefs()}
         ${nodes.map((node, index) => {
-          const target = nodes[(index + 2) % nodes.length] ?? node;
-          return `<path class="edge-line" d="M${node.x} ${node.y} L${target.x} ${target.y}" />`;
-        }).join("")}
+        const target = nodes[(index + 2) % nodes.length] ?? node;
+        return `<path class="edge-line" d="M${node.x} ${node.y} L${target.x} ${target.y}" />`;
+    }).join("")}
         ${nodes.map((node) => `
           <g>
             <circle cx="${node.x}" cy="${node.y}" r="12" fill="#58a6ff" stroke="#d7dde6" stroke-width="1.1" />
@@ -741,9 +715,8 @@ function renderInternalDependencyGraph(modules: ModuleNode[]): string {
     </div>
   `;
 }
-
-function renderBeforeAfterGraph(): string {
-  return `
+function renderBeforeAfterGraph() {
+    return `
     <div class="graph-stage">
       <svg class="graph-svg" viewBox="0 0 920 430" role="img" aria-label="Before after dependency graph">
         ${renderSvgDefs()}
@@ -761,52 +734,46 @@ function renderBeforeAfterGraph(): string {
     </div>
   `;
 }
-
-function renderMiniNetwork(centerX: number, centerY: number, accent: string, changed: boolean): string {
-  type SvgPoint = readonly [number, number];
-  type SvgLine = readonly [number, number];
-
-  const points: SvgPoint[] = [
-    [centerX, centerY - 95],
-    [centerX + 80, centerY - 48],
-    [centerX + 80, centerY + 48],
-    [centerX, centerY + 95],
-    [centerX - 80, centerY + 48],
-    [centerX - 80, centerY - 48],
-    [centerX + 10, centerY],
-    [centerX - 18, centerY + 18]
-  ];
-  const lines: SvgLine[] = [
-    [0, 1],
-    [1, 2],
-    [2, 3],
-    [3, 4],
-    [4, 5],
-    [5, 0],
-    [0, 6],
-    [6, 2],
-    [7, 4]
-  ];
-
-  return `
+function renderMiniNetwork(centerX, centerY, accent, changed) {
+    const points = [
+        [centerX, centerY - 95],
+        [centerX + 80, centerY - 48],
+        [centerX + 80, centerY + 48],
+        [centerX, centerY + 95],
+        [centerX - 80, centerY + 48],
+        [centerX - 80, centerY - 48],
+        [centerX + 10, centerY],
+        [centerX - 18, centerY + 18]
+    ];
+    const lines = [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [4, 5],
+        [5, 0],
+        [0, 6],
+        [6, 2],
+        [7, 4]
+    ];
+    return `
     ${lines.map(([from, to], index) => {
-      const start = points[from];
-      const end = points[to];
-      if (!start || !end) {
-        return "";
-      }
-      const color = changed && index > 5 ? "#7ee787" : "#8d99a8";
-      const dash = changed && index === 8 ? " stroke-dasharray=\"7 6\"" : "";
-      return `<path d="M${start[0]} ${start[1]} L${end[0]} ${end[1]}" stroke="${color}" stroke-width="2"${dash} />`;
+        const start = points[from];
+        const end = points[to];
+        if (!start || !end) {
+            return "";
+        }
+        const color = changed && index > 5 ? "#7ee787" : "#8d99a8";
+        const dash = changed && index === 8 ? " stroke-dasharray=\"7 6\"" : "";
+        return `<path d="M${start[0]} ${start[1]} L${end[0]} ${end[1]}" stroke="${color}" stroke-width="2"${dash} />`;
     }).join("")}
     ${points.map(([x, y], index) => `
       <circle cx="${x}" cy="${y}" r="10" fill="${index === 6 ? accent : "#151b23"}" stroke="${index === 6 ? accent : "#d7dde6"}" stroke-width="2" />
     `).join("")}
   `;
 }
-
-function renderStructuralTimeline(): string {
-  return `
+function renderStructuralTimeline() {
+    return `
     <svg class="timeline-svg" role="img" aria-label="Structural timeline" viewBox="0 0 680 180">
       <polyline points="24,142 90,90 150,112 210,72 270,88 330,70 390,62 450,105 510,96 570,80 640,42" fill="none" stroke="#58a6ff" stroke-width="3" />
       <polyline points="24,150 90,132 150,138 210,118 270,124 330,116 390,108 450,128 510,122 570,112 640,90" fill="none" stroke="#ffa657" stroke-width="3" />
@@ -823,27 +790,24 @@ function renderStructuralTimeline(): string {
     </svg>
   `;
 }
-
-function renderMetricCard(label: string, value: number | string): string {
-  return `
+function renderMetricCard(label, value) {
+    return `
     <article class="metric-card">
       <div class="metric-label">${escapeHtml(label)}</div>
       <div class="metric-value">${escapeHtml(String(value))}</div>
     </article>
   `;
 }
-
-function renderHealthCard(label: string, value: number | string, tone: "good" | "warn" | "info"): string {
-  return `
+function renderHealthCard(label, value, tone) {
+    return `
     <article class="health-card">
       <span class="health-label">${escapeHtml(label)}</span>
       <strong class="health-value ${tone}">${escapeHtml(String(value))}</strong>
     </article>
   `;
 }
-
-function renderSummaryCard(label: string, value: number, detail: string, tone: "added" | "removed" | "changed"): string {
-  return `
+function renderSummaryCard(label, value, detail, tone) {
+    return `
     <article class="summary-card ${tone}">
       <div class="summary-label">${escapeHtml(label)}</div>
       <div class="summary-value">${value}</div>
@@ -851,15 +815,13 @@ function renderSummaryCard(label: string, value: number, detail: string, tone: "
     </article>
   `;
 }
-
-function renderTopChangesTable(state: DashboardState): string {
-  const rows = state.snapshot.changedFiles.map((file, index) => ({
-    path: file.path,
-    type: index % 2 === 0 ? "Changed deps" : "Changed module",
-    deps: `+${index + 2} deps`
-  }));
-
-  return `
+function renderTopChangesTable(state) {
+    const rows = state.snapshot.changedFiles.map((file, index) => ({
+        path: file.path,
+        type: index % 2 === 0 ? "Changed deps" : "Changed module",
+        deps: `+${index + 2} deps`
+    }));
+    return `
     <table class="data-table">
       <thead>
         <tr>
@@ -882,13 +844,11 @@ function renderTopChangesTable(state: DashboardState): string {
     </table>
   `;
 }
-
-function renderChangedFileRow(file: ChangedFile, state: DashboardState): string {
-  const feature = file.featureId
-    ? state.snapshot.featureBlocks.find((candidate) => candidate.id === file.featureId)
-    : undefined;
-
-  return `
+function renderChangedFileRow(file, state) {
+    const feature = file.featureId
+        ? state.snapshot.featureBlocks.find((candidate) => candidate.id === file.featureId)
+        : undefined;
+    return `
     <tr>
       <td class="path-cell">${escapeHtml(file.path)}</td>
       <td><span class="status-pill">${escapeHtml(getStatusAbbreviation(file.status))}</span></td>
@@ -897,9 +857,8 @@ function renderChangedFileRow(file: ChangedFile, state: DashboardState): string 
     </tr>
   `;
 }
-
-function renderValidationCard(validation: ValidationStatus): string {
-  return `
+function renderValidationCard(validation) {
+    return `
     <article class="validation-card">
       <div class="validation-label">${escapeHtml(validation.label)}</div>
       <div class="validation-state ${validation.state}">${escapeHtml(formatValidationState(validation.state))}</div>
@@ -908,9 +867,8 @@ function renderValidationCard(validation: ValidationStatus): string {
     </article>
   `;
 }
-
-function renderSvgDefs(): string {
-  return `
+function renderSvgDefs() {
+    return `
     <defs>
       <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
         <path d="M0,0 L8,4 L0,8 Z" fill="#c9d1d9" />
@@ -918,92 +876,83 @@ function renderSvgDefs(): string {
     </defs>
   `;
 }
-
-function getArchitectureFeatures(state: DashboardState): FeatureBlock[] {
-  const architectureIds = new Set([
-    "motion-planning",
-    "gui-layer",
-    "task-runner",
-    "safety-layer",
-    "robot-io-layer",
-    "config-system",
-    "utils-common",
-    "abb-controller"
-  ]);
-  return state.snapshot.featureBlocks.filter((feature) => architectureIds.has(feature.id));
+function getArchitectureFeatures(state) {
+    const architectureIds = new Set([
+        "motion-planning",
+        "gui-layer",
+        "task-runner",
+        "safety-layer",
+        "robot-io-layer",
+        "config-system",
+        "utils-common",
+        "abb-controller"
+    ]);
+    return state.snapshot.featureBlocks.filter((feature) => architectureIds.has(feature.id));
 }
-
-function getSelectedFeature(state: DashboardState): FeatureBlock {
-  const selected = state.snapshot.featureBlocks.find((feature) => feature.id === state.selectedFeatureId);
-  return selected ?? state.snapshot.featureBlocks[0]!;
+function getSelectedFeature(state) {
+    const selected = state.snapshot.featureBlocks.find((feature) => feature.id === state.selectedFeatureId);
+    return selected ?? state.snapshot.featureBlocks[0];
 }
-
-function getModulesForFeature(state: DashboardState, featureId: string): ModuleNode[] {
-  return state.snapshot.modules.filter((moduleNode) => moduleNode.featureId === featureId);
+function getModulesForFeature(state, featureId) {
+    return state.snapshot.modules.filter((moduleNode) => moduleNode.featureId === featureId);
 }
-
-function getModuleName(state: DashboardState, moduleId: string): string {
-  return state.snapshot.modules.find((moduleNode) => moduleNode.id === moduleId)?.name ?? moduleId;
+function getModuleName(state, moduleId) {
+    return state.snapshot.modules.find((moduleNode) => moduleNode.id === moduleId)?.name ?? moduleId;
 }
-
-function getStatusAbbreviation(status: ChangedFile["status"]): string {
-  switch (status) {
-    case "modified":
-      return "M";
-    case "added":
-      return "A";
-    case "deleted":
-      return "D";
-    case "renamed":
-      return "R";
-    case "untracked":
-      return "U";
-    case "unknown":
-      return "?";
-  }
+function getStatusAbbreviation(status) {
+    switch (status) {
+        case "modified":
+            return "M";
+        case "added":
+            return "A";
+        case "deleted":
+            return "D";
+        case "renamed":
+            return "R";
+        case "untracked":
+            return "U";
+        case "unknown":
+            return "?";
+    }
 }
-
-function formatValidationState(state: ValidationStatus["state"]): string {
-  switch (state) {
-    case "passed":
-      return "Passed";
-    case "running":
-      return "Running";
-    case "failed":
-      return "Failed";
-    case "unknown":
-      return "Unknown";
-    case "notRun":
-      return "Not Run";
-  }
+function formatValidationState(state) {
+    switch (state) {
+        case "passed":
+            return "Passed";
+        case "running":
+            return "Running";
+        case "failed":
+            return "Failed";
+        case "unknown":
+            return "Unknown";
+        case "notRun":
+            return "Not Run";
+    }
 }
-
-function formatTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return date.toLocaleTimeString("en-AU", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false
-  });
+function formatTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+    return date.toLocaleTimeString("en-AU", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+    });
 }
-
-function capitalize(value: string): string {
-  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+function capitalize(value) {
+    return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
-
-export function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&#39;");
+function escapeHtml(value) {
+    return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
 }
-
-function escapeAttribute(value: string): string {
-  return escapeHtml(value);
+function escapeAttribute(value) {
+    return escapeHtml(value);
 }
+//# sourceMappingURL=renderers.js.map
