@@ -1,31 +1,19 @@
 import * as cp from "child_process";
 import * as vscode from "vscode";
+import { CodexActivity } from "../webview/dashboardState";
 import {
-  ChangedFile,
-  CodexActivity,
-  ConfidenceLevel,
-  ImpactedFeature,
-  ValidationStatus
-} from "../webview/dashboardState";
-
-export interface CodexActivityInput {
-  changedFiles: readonly ChangedFile[];
-  impactedFeatures: readonly ImpactedFeature[];
-  validations: readonly ValidationStatus[];
-  changedPaths: readonly string[];
-  deletedPaths: readonly string[];
-  timestampIso: string;
-}
-
-interface ActivityCandidate {
-  source: CodexActivity["source"];
-  confidence: ConfidenceLevel;
-  activeFeature?: string;
-  currentIntent?: string;
-  modifiedFiles: string[];
-  validationStatus?: ValidationStatus["state"];
-  diagnostics: string[];
-}
+  ActivityCandidate,
+  arrayOfStrings,
+  buildCodexActivityFromCandidates,
+  CodexActivityInput,
+  inferActiveFeature,
+  inferIntent,
+  inferValidationStatus,
+  stringValue,
+  uniquePaths,
+  validationState
+} from "./codexActivityCore";
+import { createStatusActivityCandidate } from "./codexStatus";
 
 interface MetadataShape {
   activeFeature?: unknown;
@@ -42,32 +30,26 @@ export async function getCodexActivity(
   folder: vscode.WorkspaceFolder,
   input: CodexActivityInput
 ): Promise<CodexActivity> {
-  const metadata = await readMetadataCandidate(folder);
-  const worklog = metadata ? undefined : await readWorklogCandidate(folder);
+  const status = await readStatusCandidate(folder);
+  const metadata = status.candidate ? undefined : await readMetadataCandidate(folder);
+  const worklog = status.candidate || metadata ? undefined : await readWorklogCandidate(folder);
   const gitWatch = await buildGitWatchCandidate(folder, input);
-  const chosen = metadata ?? worklog ?? gitWatch;
-  const fallbackFeature = inferActiveFeature(input.impactedFeatures);
-  const validationStatus = chosen.validationStatus ?? inferValidationStatus(input.validations);
-  const modifiedFiles = uniquePaths([
-    ...chosen.modifiedFiles,
-    ...input.changedFiles.map((file) => file.path),
-    ...input.changedPaths,
-    ...input.deletedPaths
-  ]);
+  return buildCodexActivityFromCandidates(input, {
+    status: status.candidate,
+    metadata,
+    worklog,
+    gitWatch,
+    statusDiagnostics: status.diagnostics
+  });
+}
 
-  return {
-    source: chosen.source,
-    confidence: chosen.confidence,
-    activeFeature: chosen.activeFeature ?? fallbackFeature,
-    currentIntent: chosen.currentIntent ?? inferIntent(input.impactedFeatures, modifiedFiles),
-    modifiedFiles,
-    validationStatus,
-    updatedAtIso: metadata?.source === "metadata" ? input.timestampIso : input.timestampIso,
-    diagnostics: [
-      ...chosen.diagnostics,
-      `Activity merge considered ${input.changedFiles.length} git/API changed files and ${input.changedPaths.length + input.deletedPaths.length} watcher paths.`
-    ]
-  };
+async function readStatusCandidate(folder: vscode.WorkspaceFolder): Promise<{ candidate?: ActivityCandidate; diagnostics: string[] }> {
+  const uri = vscode.Uri.joinPath(folder.uri, ".codex", "status.json");
+  const source = await readUtf8(uri);
+  if (source === undefined) {
+    return { diagnostics: [] };
+  }
+  return createStatusActivityCandidate(source);
 }
 
 async function readMetadataCandidate(folder: vscode.WorkspaceFolder): Promise<ActivityCandidate | undefined> {
@@ -220,68 +202,6 @@ function findLastLine(lines: readonly string[], predicate: (line: string) => boo
     }
   }
   return undefined;
-}
-
-function inferActiveFeature(impactedFeatures: readonly ImpactedFeature[]): string | undefined {
-  return [...impactedFeatures]
-    .sort((left, right) => right.changedFileCount - left.changedFileCount || riskRank(right.riskLevel) - riskRank(left.riskLevel))
-    .at(0)?.featureId;
-}
-
-function inferIntent(impactedFeatures: readonly ImpactedFeature[], modifiedFiles: readonly string[]): string {
-  const active = [...impactedFeatures]
-    .sort((left, right) => right.changedFileCount - left.changedFileCount || riskRank(right.riskLevel) - riskRank(left.riskLevel))
-    .at(0);
-  if (active) {
-    return `Reviewing ${active.label} changes and their runtime impact.`;
-  }
-  if (modifiedFiles.length > 0) {
-    return `Reviewing ${modifiedFiles.length} modified file${modifiedFiles.length === 1 ? "" : "s"}.`;
-  }
-  return "No active Codex change area detected.";
-}
-
-function inferValidationStatus(validations: readonly ValidationStatus[]): ValidationStatus["state"] {
-  if (validations.some((validation) => validation.state === "failed")) {
-    return "failed";
-  }
-  if (validations.some((validation) => validation.state === "running")) {
-    return "running";
-  }
-  if (validations.length > 0 && validations.every((validation) => validation.state === "passed")) {
-    return "passed";
-  }
-  if (validations.some((validation) => validation.state === "unknown")) {
-    return "unknown";
-  }
-  return "notRun";
-}
-
-function validationState(value: unknown): ValidationStatus["state"] | undefined {
-  return value === "passed" || value === "running" || value === "failed" || value === "unknown" || value === "notRun"
-    ? value
-    : undefined;
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function arrayOfStrings(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.map((item) => typeof item === "string" ? item.trim() : "").filter(Boolean)
-    : [];
-}
-
-function uniquePaths(values: readonly string[]): string[] {
-  return [...new Set(values
-    .map((value) => value.replaceAll("\\", "/").replace(/^\/+/, "").trim())
-    .filter(Boolean))]
-    .sort((left, right) => left.localeCompare(right));
-}
-
-function riskRank(risk: ImpactedFeature["riskLevel"]): number {
-  return risk === "high" ? 3 : risk === "medium" ? 2 : 1;
 }
 
 function escapeRegExp(value: string): string {

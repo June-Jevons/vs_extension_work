@@ -3,6 +3,7 @@ import { LiveArchitectureStateManager } from "../core/analysisEngine";
 import { shouldExcludePath } from "../core/scanPathFilter";
 
 const WATCH_PATTERNS = [
+  "**/.codex/status.json",
   "**/*.py",
   "**/*.yaml",
   "**/*.yml",
@@ -56,6 +57,12 @@ export class WorkspaceWatcher implements vscode.Disposable {
     if (shouldExcludePath(relativePath, this.excludeGlobs)) {
       return;
     }
+    const isStatusRefresh = relativePath === ".codex/status.json" || relativePath.endsWith("/.codex/status.json");
+    if (isStatusRefresh) {
+      this.queueRefresh();
+      return;
+    }
+
     if (kind === "deleted") {
       this.deletedPaths.add(relativePath);
       this.changedPaths.delete(relativePath);
@@ -64,6 +71,10 @@ export class WorkspaceWatcher implements vscode.Disposable {
       this.deletedPaths.delete(relativePath);
     }
 
+    this.queueRefresh();
+  }
+
+  private queueRefresh(): void {
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);
     }

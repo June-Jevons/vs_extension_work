@@ -212,7 +212,10 @@ function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
         <p>{activeFeature?.label ?? state.snapshot.codexActivity.activeFeature ?? "No active feature detected."}</p>
         <p>{state.snapshot.codexActivity.currentIntent}</p>
         <ul className="plain-list">
-          <li>Source: {state.snapshot.codexActivity.source} ({state.snapshot.codexActivity.confidence})</li>
+          {state.snapshot.codexActivity.phase ? <li>Phase: {state.snapshot.codexActivity.phase}</li> : null}
+          {state.snapshot.codexActivity.scope ? <li>Scope: {state.snapshot.codexActivity.scope}</li> : null}
+          <li>Source: {state.snapshot.codexActivity.source}</li>
+          <li>Confidence: {state.snapshot.codexActivity.confidence}</li>
           <li>Validation: {state.snapshot.codexActivity.validationStatus}</li>
         </ul>
       </section>

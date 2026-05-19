@@ -173,10 +173,29 @@ export interface RiskItem {
 }
 
 export type CodexActivitySource =
+  | "status"
   | "metadata"
   | "worklog"
   | "git-watch"
   | "none";
+
+export type CodexActivityPhaseCode =
+  | "plan"
+  | "scan"
+  | "edit"
+  | "test"
+  | "fix"
+  | "done"
+  | "block";
+
+export type CodexActivityPhase =
+  | "planning"
+  | "scanning"
+  | "editing"
+  | "testing"
+  | "fixing"
+  | "done"
+  | "blocked";
 
 export interface CodexActivity {
   source: CodexActivitySource;
@@ -186,6 +205,10 @@ export interface CodexActivity {
   modifiedFiles: string[];
   validationStatus: ValidationStatus["state"];
   updatedAtIso: string;
+  phase?: CodexActivityPhaseCode;
+  phaseState?: CodexActivityPhase;
+  scope?: string;
+  note?: string;
   diagnostics: string[];
 }
 

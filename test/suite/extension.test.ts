@@ -54,6 +54,9 @@ for (const testId of requiredReactTestIds) {
 assert.ok(appSource.includes("dashboardModes.map"), "React dashboard should render mode tabs from the shared mode list");
 assert.ok(appSource.includes("mode-${mode}"), "React dashboard should expose stable mode tab test ids");
 assert.ok(appSource.includes("risk-card-${level}"), "React dashboard should expose stable risk card test ids");
+assert.ok(appSource.includes("Phase: {state.snapshot.codexActivity.phase}"), "React dashboard should render compact Codex status phase");
+assert.ok(appSource.includes("Scope: {state.snapshot.codexActivity.scope}"), "React dashboard should render compact Codex status scope");
+assert.ok(appSource.includes("Confidence: {state.snapshot.codexActivity.confidence}"), "React dashboard should render Codex activity confidence separately");
 
 const graphTargetsByMode: Record<DashboardMode, GraphViewTarget[]> = {
   liveChanges: ["liveImpact", "liveDependency"],
