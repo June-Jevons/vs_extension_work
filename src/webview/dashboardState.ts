@@ -34,19 +34,31 @@ export interface GitSummary {
   behind: number;
 }
 
-export type GitStatusSource = "VS Code Git API" | "CLI fallback" | "unavailable";
+export type GitStatusSource = "VS Code Git API" | "unavailable";
 
 export type ScannerStatus =
-  | "findFiles"
-  | "readDirectory fallback"
-  | "mock fallback"
+  | "vscodeFindFiles"
+  | "unavailable"
   | "error";
+
+export interface AnalysisTimingEntry {
+  phase: string;
+  durationMs: number;
+}
+
+export interface FileAnalysisCacheSummary {
+  hitCount: number;
+  missCount: number;
+  invalidatedCount: number;
+  deletedCount: number;
+  entryCount: number;
+}
 
 export interface WorkspaceDiagnostics {
   rootUri: string;
   workspaceFsPath?: string;
   pathKind: "linux-native" | "unc-wsl" | "unc" | "windows-local" | "unknown";
-  stateSource: "real" | "mock";
+  stateSource: "real" | "mock" | "unavailable";
   fallbackReason?: string;
   pythonFileCount: number;
   moduleCount: number;
@@ -66,6 +78,11 @@ export interface WorkspaceDiagnostics {
   gitStatusSource: GitStatusSource;
   scannerStatus: ScannerStatus;
   discoveredFileCount: number;
+  analysisTimings: AnalysisTimingEntry[];
+  cache: FileAnalysisCacheSummary;
+  incremental: boolean;
+  changedPathCount: number;
+  workspaceIndexReason: string;
   lastUpdatedIso: string;
   baselineCapturedAtIso?: string;
 }

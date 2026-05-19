@@ -4,9 +4,10 @@ import { commandIds } from "../commands/commands";
 import { LiveArchitectureStateManager } from "../core/analysisEngine";
 import { logInfo } from "../core/outputChannel";
 import { DashboardMode } from "./dashboardState";
+import { getGraphStatsForMode } from "./graphStats";
 import { getDashboardWebviewHtml, getNonce } from "./html";
 import { isWebviewToExtensionMessage } from "./messageProtocol";
-import { getGraphStatsForMode } from "./renderers";
+import { getWebviewBundleStatus } from "./webviewAssets";
 
 export interface DashboardCommandResult {
   opened: boolean;
@@ -16,6 +17,13 @@ export interface DashboardCommandResult {
   viewType: string;
   visible: boolean;
   active: boolean;
+  stateSource: string;
+  scannerStatus: string;
+  gitStatusSource: string;
+  isMockData: boolean;
+  error?: string;
+  diagnosticReason?: string;
+  webviewBundleStatus: "available" | "missing";
   wroteWorkspaceFiles: false;
 }
 
@@ -171,6 +179,13 @@ export class DashboardPanel {
       viewType: this.panel.viewType,
       visible: this.panel.visible,
       active: this.panel.active,
+      stateSource: state.diagnostics.stateSource,
+      scannerStatus: state.diagnostics.scannerStatus,
+      gitStatusSource: state.diagnostics.gitStatusSource,
+      isMockData: state.isMockData,
+      error: state.error,
+      diagnosticReason: state.diagnostics.fallbackReason,
+      webviewBundleStatus: getWebviewBundleStatus(this.context.extensionUri.fsPath).kind,
       wroteWorkspaceFiles: false
     };
   }

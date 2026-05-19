@@ -49,6 +49,7 @@ npm run visual:test
 npm run test:vscode
 npm run validate
 npm run package
+npm run verify:vsix
 ```
 
 After `package-lock.json` exists and dependencies are not being changed, use `npm ci` for repeatable installs.
@@ -125,6 +126,7 @@ Build the installable extension:
 
 ```bash
 npm run package
+npm run verify:vsix
 ```
 
 The generated `.vsix` is ignored and should not be committed unless a release process explicitly asks for it.

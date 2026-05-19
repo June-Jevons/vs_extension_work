@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { LiveArchitectureStateManager } from "../core/analysisEngine";
-import { shouldExcludePath } from "../core/readDirectoryFallbackScanner";
+import { shouldExcludePath } from "../core/scanPathFilter";
 
 const WATCH_PATTERNS = [
   "**/*.py",
@@ -18,6 +18,8 @@ export class WorkspaceWatcher implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private refreshTimer: NodeJS.Timeout | undefined;
   private excludeGlobs: string[] = [];
+  private readonly changedPaths = new Set<string>();
+  private readonly deletedPaths = new Set<string>();
 
   constructor(private readonly stateManager: LiveArchitectureStateManager) {}
 
@@ -32,9 +34,9 @@ export class WorkspaceWatcher implements vscode.Disposable {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       this.disposables.push(
         watcher,
-        watcher.onDidCreate((uri) => this.scheduleRefresh(uri)),
-        watcher.onDidChange((uri) => this.scheduleRefresh(uri)),
-        watcher.onDidDelete((uri) => this.scheduleRefresh(uri))
+        watcher.onDidCreate((uri) => this.scheduleRefresh(uri, "changed")),
+        watcher.onDidChange((uri) => this.scheduleRefresh(uri, "changed")),
+        watcher.onDidDelete((uri) => this.scheduleRefresh(uri, "deleted"))
       );
     }
   }
@@ -49,10 +51,17 @@ export class WorkspaceWatcher implements vscode.Disposable {
     }
   }
 
-  private scheduleRefresh(uri: vscode.Uri): void {
+  private scheduleRefresh(uri: vscode.Uri, kind: "changed" | "deleted"): void {
     const relativePath = vscode.workspace.asRelativePath(uri, false).replaceAll("\\", "/");
     if (shouldExcludePath(relativePath, this.excludeGlobs)) {
       return;
+    }
+    if (kind === "deleted") {
+      this.deletedPaths.add(relativePath);
+      this.changedPaths.delete(relativePath);
+    } else {
+      this.changedPaths.add(relativePath);
+      this.deletedPaths.delete(relativePath);
     }
 
     if (this.refreshTimer) {
@@ -61,7 +70,14 @@ export class WorkspaceWatcher implements vscode.Disposable {
 
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = undefined;
-      void this.stateManager.refresh();
+      const changedPaths = [...this.changedPaths];
+      const deletedPaths = [...this.deletedPaths];
+      this.changedPaths.clear();
+      this.deletedPaths.clear();
+      void this.stateManager.refresh({
+        changedPaths,
+        deletedPaths
+      });
     }, 600);
   }
 }

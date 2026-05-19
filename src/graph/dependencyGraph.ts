@@ -1,5 +1,6 @@
 import { DependencyEdge, ModuleNode } from "../webview/dashboardState";
-import { ParsedImport, resolveLocalImport } from "./importParser";
+import { buildImportResolverIndex, resolveLocalImportWithIndex } from "./importResolverIndex";
+import { ParsedImport } from "./importParser";
 
 export interface ModuleImportRecord {
   moduleId: string;
@@ -19,6 +20,7 @@ export function buildDependencyGraph(
   importRecords: ModuleImportRecord[]
 ): { modules: ModuleNode[]; dependencies: DependencyEdge[]; diagnostics: DependencyGraphDiagnostics } {
   const moduleIds = new Set(modules.map((moduleNode) => moduleNode.id));
+  const resolverIndex = buildImportResolverIndex(moduleIds);
   const dependencies: DependencyEdge[] = [];
   const importsByModule = new Map<string, string[]>();
   const importedByModule = new Map<string, string[]>();
@@ -28,7 +30,7 @@ export function buildDependencyGraph(
   for (const record of importRecords) {
     for (const parsedImport of record.imports) {
       parsedImportStatementCount += 1;
-      const resolved = resolveLocalImport(parsedImport, moduleIds, record.moduleId);
+      const resolved = resolveLocalImportWithIndex(parsedImport, resolverIndex, record.moduleId);
       if (!resolved || resolved === record.moduleId) {
         if (!resolved) {
           unresolvedImportCount += 1;

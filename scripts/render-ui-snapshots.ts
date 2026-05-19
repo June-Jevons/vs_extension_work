@@ -95,6 +95,6 @@ Reason: optional live Extension Development Host screenshot capture is not part 
 
 ## Target Workspace Safety
 
-No inspected target workspace files were written. This first pass writes only inside the extension repository, with generated validation output under ignored artifacts/.
+No inspected target workspace files were written. This validation writes only inside the extension repository, with generated validation output under ignored artifacts/.
 `;
 }

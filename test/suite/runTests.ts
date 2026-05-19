@@ -1,15 +1,22 @@
 import "./extension.test";
+import "./analysisTiming.test";
 import "./doctorUbuntu.test";
 import "./featureMapper.test";
+import "./fileAnalysisCache.test";
+import "./gitProvider.test";
 import "./graphDiff.test";
 import "./graphGeometry.test";
 import "./graphViews.test";
+import "./importResolverIndex.test";
 import "./importParser.test";
-import "./readDirectoryFallbackScanner.test";
+import "./legacyRendererRemoval.test";
 import "./riskScorer.test";
+import "./scanPathFilter.test";
+import "./scannerBackendSelection.test";
 import "./storage.test";
 import "./ubuntuPathKind.test";
 import "./vscodeConfigUbuntu.test";
 import "./webviewAssets.test";
+import "./workspaceIndex.test";
 
 console.log("All unit checks passed.");

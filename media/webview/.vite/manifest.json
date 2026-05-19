@@ -1,6 +1,6 @@
 {
   "node_modules/elkjs/lib/elk.bundled.js": {
-    "file": "assets/elk.bundled-D1AgNtNz.js",
+    "file": "assets/elk.bundled-BSOwUOj0.js",
     "name": "elk.bundled",
     "src": "node_modules/elkjs/lib/elk.bundled.js",
     "isDynamicEntry": true,
@@ -9,7 +9,7 @@
     ]
   },
   "src/webview-app/main.tsx": {
-    "file": "assets/main-9wNm6aze.js",
+    "file": "assets/main-Cd8yE_Gy.js",
     "name": "main",
     "src": "src/webview-app/main.tsx",
     "isEntry": true,

@@ -154,9 +154,10 @@
     }
   },
   "scripts": {
+    "clean:compiled": "rm -rf out out-test out-scripts",
     "compile:extension": "tsc -p ./",
     "compile:webview": "tsc -p ./tsconfig.webview.json && vite build --config ./webview.vite.config.ts",
-    "compile": "npm run compile:extension && npm run compile:webview",
+    "compile": "npm run clean:compiled && npm run compile:extension && npm run compile:webview",
     "watch:extension": "tsc -watch -p ./",
     "watch:webview": "vite build --watch --config ./webview.vite.config.ts",
     "watch": "npm run watch:extension",
@@ -165,16 +166,19 @@
     "visual:render": "npm run compile && tsc -p ./tsconfig.scripts.json && node ./out-scripts/scripts/render-ui-snapshots.js",
     "visual:test": "playwright test",
     "test:vscode": "npm run compile && tsc -p ./tsconfig.test.json && vscode-test --config ./.vscode-test.mjs",
+    "test:vscode:headless": "xvfb-run -a npm run test:vscode",
     "doctor:ubuntu": "tsc -p ./tsconfig.scripts.json && node ./out-scripts/scripts/doctor-ubuntu.js",
     "validate": "npm run compile && npm run test:unit && npm run visual:render && npm run visual:test",
-    "package": "vsce package"
+    "validate:full": "npm run doctor:ubuntu && npm run validate && npm run test:vscode && npm run package && npm run verify:vsix",
+    "package": "npm run compile && vsce package",
+    "verify:vsix": "tsc -p ./tsconfig.scripts.json && node ./out-scripts/scripts/verify-vsix-contents.js"
   },
   "devDependencies": {
     "@playwright/test": "1.60.0",
     "@types/node": "24.12.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/vscode": "1.120.0",
+    "@types/vscode": "^1.118.0",
     "@vitejs/plugin-react": "^6.0.2",
     "@vscode/test-cli": "0.0.12",
     "@vscode/test-electron": "2.5.2",

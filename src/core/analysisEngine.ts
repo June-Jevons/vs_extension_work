@@ -20,9 +20,22 @@ import {
   WorkspaceDiagnostics,
   WorkspaceSnapshot
 } from "../webview/dashboardState";
+import { buildGraphViewForTarget } from "../webview/graphViewModel";
+import { AnalysisTimingRecorder, formatAnalysisTimings } from "./analysisTiming";
+import { FileAnalysisCache } from "./fileAnalysisCache";
 import { buildFeatureBlocks, getFeatureDefinition, inferFeatureFromImportsDetailed, mapFeatureForPath } from "./featureMapper";
 import { buildRiskSummary, scoreChangedFileWithReason, scoreModuleRisk } from "./riskScorer";
 import { scanWorkspace } from "./workspaceScanner";
+import { decideWorkspaceIndexRefresh, WorkspaceIndex } from "./workspaceIndex";
+
+export interface RefreshRequest {
+  mode?: DashboardMode;
+  selectedFeatureId?: string;
+  changedPaths?: readonly string[];
+  deletedPaths?: readonly string[];
+  manualFullRefresh?: boolean;
+  cacheInvalidated?: boolean;
+}
 
 export class LiveArchitectureStateManager implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<DashboardState>();
@@ -30,6 +43,8 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
 
   private state = createMockDashboardState();
   private refreshing: Promise<DashboardState> | undefined;
+  private readonly fileAnalysisCache = new FileAnalysisCache();
+  private readonly workspaceIndexes = new Map<string, WorkspaceIndex>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -41,10 +56,11 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     return this.state;
   }
 
-  async refresh(requestedMode?: DashboardMode, selectedFeatureId?: string): Promise<DashboardState> {
+  async refresh(request?: DashboardMode | RefreshRequest, selectedFeatureId?: string): Promise<DashboardState> {
     if (this.refreshing) {
       return this.refreshing;
     }
+    const refreshRequest = normalizeRefreshRequest(request, selectedFeatureId);
 
     this.state = {
       ...this.state,
@@ -57,25 +73,17 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     };
     this.changeEmitter.fire(this.state);
 
-    this.refreshing = this.buildState(requestedMode, selectedFeatureId)
+    this.refreshing = this.buildState(refreshRequest)
       .catch((error: unknown) => {
         const reason = error instanceof Error ? error.message : "Unknown analysis error.";
         logInfo(`analysis error: ${reason}`);
         const folder = vscode.workspace.workspaceFolders?.[0];
-        if (folder) {
-          return this.createRealFallbackState(
-            requestedMode ?? this.state.mode,
-            selectedFeatureId ?? this.state.selectedFeatureId,
-            `Analysis error: ${reason}`,
-            "error",
-            folder
-          );
-        }
-        return this.createMockFallbackState(
-          requestedMode ?? this.state.mode,
-          selectedFeatureId ?? this.state.selectedFeatureId,
+        return this.createUnavailableState(
+          refreshRequest.mode ?? this.state.mode,
+          refreshRequest.selectedFeatureId ?? this.state.selectedFeatureId,
           `Analysis error: ${reason}`,
-          "error"
+          "error",
+          folder
         );
       })
       .then((state) => {
@@ -136,26 +144,16 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
   }
 
   async clearWorkspaceCache(): Promise<{ cleared: boolean; wroteWorkspaceFiles: false }> {
-    if (this.state.isMockData) {
-      this.state = {
-        ...this.state,
-        baselineDiff: undefined,
-        diagnostics: {
-          ...this.state.diagnostics,
-          baselineCapturedAtIso: undefined
-        }
-      };
-      this.changeEmitter.fire(this.state);
-      logInfo("clear workspace cache: mock/fallback state only; no workspace files touched.");
-      return {
-        cleared: false,
-        wroteWorkspaceFiles: false
-      };
-    }
-
     await this.snapshotStore.clearSnapshot(this.state.snapshot.workspaceKey);
     await this.baselineStore.clearBaseline(this.state.snapshot.workspaceKey);
-    await this.refresh(this.state.mode, this.state.selectedFeatureId);
+    this.fileAnalysisCache.clearWorkspace(this.state.snapshot.workspaceKey);
+    this.workspaceIndexes.delete(this.state.snapshot.workspaceKey);
+    await this.refresh({
+      mode: this.state.mode,
+      selectedFeatureId: this.state.selectedFeatureId,
+      cacheInvalidated: true,
+      manualFullRefresh: true
+    });
 
     return {
       cleared: true,
@@ -167,14 +165,17 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     this.changeEmitter.dispose();
   }
 
-  private async buildState(requestedMode?: DashboardMode, selectedFeatureId?: string): Promise<DashboardState> {
+  private async buildState(refreshRequest: RefreshRequest): Promise<DashboardState> {
+    const timing = new AnalysisTimingRecorder();
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
-      return this.createMockFallbackState(
-        requestedMode ?? this.state.mode,
-        selectedFeatureId ?? this.state.selectedFeatureId,
+      return this.createUnavailableState(
+        refreshRequest.mode ?? this.state.mode,
+        refreshRequest.selectedFeatureId ?? this.state.selectedFeatureId,
         "No workspace folder is open.",
-        "mock fallback"
+        "unavailable",
+        undefined,
+        timing.finish()
       );
     }
 
@@ -186,45 +187,65 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       name: folder.name,
       rootUri: folder.uri.toString()
     });
+    const changedPaths = normalizeChangedPaths(refreshRequest.changedPaths ?? []);
+    const deletedPaths = normalizeChangedPaths(refreshRequest.deletedPaths ?? []);
+    const workspaceIndex = this.workspaceIndexes.get(workspaceKey) ?? new WorkspaceIndex();
+    const indexDecision = decideWorkspaceIndexRefresh({
+      hasExistingIndex: workspaceIndex.size > 0,
+      manualFullRefresh: refreshRequest.manualFullRefresh,
+      cacheInvalidated: refreshRequest.cacheInvalidated,
+      changedPaths: [...changedPaths, ...deletedPaths],
+      maxIncrementalPaths: 100
+    });
+    this.workspaceIndexes.set(workspaceKey, workspaceIndex);
 
     logInfo(`workspace folder URI=${folder.uri.toString()}`);
     logInfo(`workspace fsPath=${folder.uri.fsPath}`);
     logInfo(`workspace path kind=${describePathKind(folder.uri.fsPath)}`);
     const scan = await scanWorkspace(folder, {
       excludeGlobs,
-      maxFilesToAnalyze
+      maxFilesToAnalyze,
+      workspaceKey,
+      fileCache: this.fileAnalysisCache,
+      timing,
+      changedPaths: [...changedPaths, ...deletedPaths]
     });
+    workspaceIndex.updateFromFullScan(scan.modules.map((moduleNode) => moduleNode.path));
+    workspaceIndex.applyChanges([...changedPaths], [...deletedPaths]);
 
     if (scan.modules.length === 0) {
-      return this.createRealFallbackState(
-        requestedMode ?? this.state.mode,
-        selectedFeatureId ?? this.state.selectedFeatureId,
-        scan.fallbackReason
-          ? `${scan.fallbackReason} No Python modules were discovered.`
-          : "No Python modules were discovered.",
-        scan.scannerStatus,
+      return this.createUnavailableState(
+        refreshRequest.mode ?? this.state.mode,
+        refreshRequest.selectedFeatureId ?? this.state.selectedFeatureId,
+        "No Python modules were discovered by the deterministic VS Code findFiles scanner.",
+        "unavailable",
         folder,
-        scan.discoveredFileCount
+        timing.finish(),
+        scan.discoveredFileCount,
+        scan.cache,
+        !indexDecision.fullRebuild,
+        changedPaths.length + deletedPaths.length,
+        indexDecision.reason
       );
     }
 
-    const graph = buildDependencyGraph(scan.modules, scan.importRecords);
+    const graph = timing.measureSync("dependency resolve", () => buildDependencyGraph(scan.modules, scan.importRecords));
     logInfo(`import edge count=${graph.dependencies.length}, parsedImports=${graph.diagnostics.parsedImportStatementCount}, unresolvedImports=${graph.diagnostics.unresolvedImportCount}`);
-    const modulesWithFeatures = applyFeatureInference(graph.modules, graph.dependencies);
-    const modules = modulesWithFeatures.map((moduleNode) => {
+    const modulesWithFeatures = timing.measureSync("feature mapping", () => applyFeatureInference(graph.modules, graph.dependencies));
+    const modules = timing.measureSync("risk scoring", () => modulesWithFeatures.map((moduleNode) => {
       const risk = scoreModuleRisk(moduleNode.path, moduleNode.importedBy.length);
       return {
         ...moduleNode,
         riskLevel: risk.level
       };
-    });
-    const gitStatus = await getGitStatus(folder);
+    }));
+    const gitStatus = await timing.measure("Git status", () => getGitStatus(folder));
     const changedFiles = buildChangedFiles(gitStatus.changedFiles, modules);
     const dirty = changedFiles.length > 0;
-    const featureBlocks = applyChangedFileCounts(buildFeatureBlocks(modules, graph.dependencies), changedFiles);
+    const featureBlocks = timing.measureSync("feature mapping", () => applyChangedFileCounts(buildFeatureBlocks(modules, graph.dependencies), changedFiles));
     const impactedFeatures = buildImpactedFeatures(featureBlocks, modules, changedFiles);
-    const mode = requestedMode ?? getDefaultMode(configuration, dirty);
-    const selected = selectedFeatureId ?? this.state.selectedFeatureId ?? impactedFeatures[0]?.featureId ?? featureBlocks[0]?.id;
+    const mode = refreshRequest.mode ?? getDefaultMode(configuration, dirty);
+    const selected = refreshRequest.selectedFeatureId ?? this.state.selectedFeatureId ?? impactedFeatures[0]?.featureId ?? featureBlocks[0]?.id;
 
     const snapshot: WorkspaceSnapshot = {
       workspaceKey,
@@ -258,6 +279,13 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
 
     await this.snapshotStore.saveSnapshot(snapshot);
     const baseline = this.baselineStore.getBaseline(workspaceKey);
+    timing.measureSync("graph view model generation", () => {
+      buildGraphViewForTarget({ ...this.state, mode: "liveChanges", snapshot, selectedFeatureId: selected, baselineDiff: baseline ? buildGraphDiff(baseline.snapshot, snapshot) : undefined }, "liveImpact", selected);
+      buildGraphViewForTarget({ ...this.state, mode: "wholeArchitecture", snapshot, selectedFeatureId: selected, baselineDiff: baseline ? buildGraphDiff(baseline.snapshot, snapshot) : undefined }, "wholeArchitecture", selected);
+      buildGraphViewForTarget({ ...this.state, mode: "featureFocus", snapshot, selectedFeatureId: selected, baselineDiff: baseline ? buildGraphDiff(baseline.snapshot, snapshot) : undefined }, "featureInternal", selected);
+      buildGraphViewForTarget({ ...this.state, mode: "diffSinceBaseline", snapshot, selectedFeatureId: selected, baselineDiff: baseline ? buildGraphDiff(baseline.snapshot, snapshot) : undefined }, "baselineDiff", selected);
+    });
+    const timings = timing.finish();
     const unclassifiedModules = modules
       .filter((moduleNode) => moduleNode.featureId === "unmapped-unknown")
       .sort((left, right) => left.path.localeCompare(right.path));
@@ -266,7 +294,7 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       workspaceFsPath: folder.uri.fsPath,
       pathKind: describePathKind(folder.uri.fsPath),
       stateSource: "real",
-      fallbackReason: scan.fallbackReason,
+      fallbackReason: gitStatus.unavailableReason,
       pythonFileCount: scan.totalPythonFiles,
       moduleCount: modules.length,
       dependencyCount: graph.dependencies.length,
@@ -285,12 +313,18 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       gitStatusSource: gitStatus.source,
       scannerStatus: scan.scannerStatus,
       discoveredFileCount: scan.discoveredFileCount,
+      analysisTimings: timings,
+      cache: scan.cache,
+      incremental: !indexDecision.fullRebuild,
+      changedPathCount: changedPaths.length + deletedPaths.length,
+      workspaceIndexReason: indexDecision.reason,
       lastUpdatedIso: snapshot.capturedAtIso,
       baselineCapturedAtIso: baseline?.capturedAtIso
     };
     logInfo(
       `final state source=real, mockData=false, pythonFiles=${diagnostics.pythonFileCount}, modules=${diagnostics.moduleCount}, featureBlocks=${featureBlocks.length}, unmappedModules=${diagnostics.unmappedModuleCount}, testModules=${diagnostics.testModuleCount}, runtimeModules=${diagnostics.runtimeModuleCount}, dependencies=${diagnostics.dependencyCount}, graphEdges=${diagnostics.graphEdgeCount}, parsedImports=${diagnostics.parsedImportStatementCount}, unresolvedImports=${diagnostics.unresolvedImportCount}, changedFiles=${diagnostics.changedFileCount}, gitBranch=${diagnostics.gitBranch}, gitStatusSource=${diagnostics.gitStatusSource}`
     );
+    logInfo(`analysis timing: ${formatAnalysisTimings(timings)}, cacheHits=${scan.cache.hitCount}, cacheMisses=${scan.cache.missCount}, cacheEntries=${scan.cache.entryCount}, incremental=${diagnostics.incremental}, changedPathCount=${diagnostics.changedPathCount}, workspaceIndexReason=${diagnostics.workspaceIndexReason}`);
 
     return {
       mode,
@@ -310,88 +344,34 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     };
   }
 
-  private createMockFallbackState(
+  private createUnavailableState(
     mode: DashboardMode,
     selectedFeatureId: string | undefined,
-    fallbackReason: string,
+    diagnosticReason: string,
     scannerStatus: ScannerStatus,
     folder?: vscode.WorkspaceFolder,
-    discoveredFileCount = 0
-  ): DashboardState {
-    const fallback = createMockDashboardState(mode, selectedFeatureId);
-    const capturedAtIso = new Date().toISOString();
-    const rootUri = folder?.uri.toString() ?? fallback.workspace.rootUri;
-    const workspaceName = folder?.name ?? fallback.workspace.name;
-    const workspaceFsPath = folder?.uri.fsPath ?? fallback.diagnostics.workspaceFsPath;
-    const snapshot: WorkspaceSnapshot = {
-      ...fallback.snapshot,
-      workspaceName,
-      rootUri,
-      capturedAtIso
-    };
-    const state: DashboardState = {
-      ...fallback,
-      workspace: {
-        ...fallback.workspace,
-        name: workspaceName,
-        rootUri,
-        lastUpdatedIso: capturedAtIso
-      },
-      snapshot,
-      baselineDiff: undefined,
-      diagnostics: {
-        ...fallback.diagnostics,
-        rootUri,
-        workspaceFsPath,
-        pathKind: describePathKind(workspaceFsPath),
-        stateSource: "mock",
-        fallbackReason,
-        pythonFileCount: 0,
-        moduleCount: 0,
-        dependencyCount: 0,
-        graphNodeCount: 0,
-        graphEdgeCount: 0,
-        unmappedModuleCount: 0,
-        unclassifiedModulePaths: [],
-        unclassifiedReasonCounts: [],
-        testModuleCount: 0,
-        runtimeModuleCount: 0,
-        parsedImportStatementCount: 0,
-        resolvedLocalEdgeCount: 0,
-        unresolvedImportCount: 0,
-        changedFileCount: 0,
-        gitBranch: "unknown",
-        gitStatusSource: "unavailable",
-        scannerStatus,
-        discoveredFileCount,
-        lastUpdatedIso: capturedAtIso,
-        baselineCapturedAtIso: undefined
-      },
-      isMockData: true,
-      isLoading: false,
-      error: scannerStatus === "error" ? fallbackReason : undefined
-    };
-    logInfo(`final state source=mock, fallbackReason=${fallbackReason}`);
-    return state;
-  }
-
-  private createRealFallbackState(
-    mode: DashboardMode,
-    selectedFeatureId: string | undefined,
-    fallbackReason: string,
-    scannerStatus: ScannerStatus,
-    folder: vscode.WorkspaceFolder,
-    discoveredFileCount = 0
+    timings: WorkspaceDiagnostics["analysisTimings"] = [],
+    discoveredFileCount = 0,
+    cache: WorkspaceDiagnostics["cache"] = {
+      hitCount: 0,
+      missCount: 0,
+      invalidatedCount: 0,
+      deletedCount: 0,
+      entryCount: 0
+    },
+    incremental = false,
+    changedPathCount = 0,
+    workspaceIndexReason = "analysis unavailable"
   ): DashboardState {
     const capturedAtIso = new Date().toISOString();
     const workspaceKey = createWorkspaceKey({
-      name: folder.name,
-      rootUri: folder.uri.toString()
+      name: folder?.name ?? "No Workspace",
+      rootUri: folder?.uri.toString() ?? "unavailable:"
     });
     const snapshot: WorkspaceSnapshot = {
       workspaceKey,
-      workspaceName: folder.name,
-      rootUri: folder.uri.toString(),
+      workspaceName: folder?.name ?? "No Workspace",
+      rootUri: folder?.uri.toString() ?? "unavailable:",
       capturedAtIso,
       modules: [],
       dependencies: [],
@@ -414,8 +394,8 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     const state: DashboardState = {
       mode,
       workspace: {
-        name: folder.name,
-        rootUri: folder.uri.toString(),
+        name: folder?.name ?? "No Workspace",
+        rootUri: folder?.uri.toString() ?? "unavailable:",
         isDirty: false,
         lastUpdatedIso: capturedAtIso,
         autoRefresh: true
@@ -423,11 +403,11 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       snapshot,
       selectedFeatureId,
       diagnostics: {
-        rootUri: folder.uri.toString(),
-        workspaceFsPath: folder.uri.fsPath,
-        pathKind: describePathKind(folder.uri.fsPath),
-        stateSource: "real",
-        fallbackReason,
+        rootUri: folder?.uri.toString() ?? "unavailable:",
+        workspaceFsPath: folder?.uri.fsPath,
+        pathKind: describePathKind(folder?.uri.fsPath),
+        stateSource: "unavailable",
+        fallbackReason: diagnosticReason,
         pythonFileCount: 0,
         moduleCount: 0,
         dependencyCount: 0,
@@ -446,14 +426,19 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
         gitStatusSource: "unavailable",
         scannerStatus,
         discoveredFileCount,
+        analysisTimings: timings,
+        cache,
+        incremental,
+        changedPathCount,
+        workspaceIndexReason,
         lastUpdatedIso: capturedAtIso,
         baselineCapturedAtIso: undefined
       },
       isMockData: false,
       isLoading: false,
-      error: fallbackReason
+      error: diagnosticReason
     };
-    logInfo(`final state source=real, mockData=false, fallbackReason=${fallbackReason}, discoveredFiles=${discoveredFileCount}`);
+    logInfo(`final state source=unavailable, mockData=false, diagnosticReason=${diagnosticReason}, discoveredFiles=${discoveredFileCount}, timings=${formatAnalysisTimings(timings)}`);
     return state;
   }
 }
@@ -670,4 +655,21 @@ function highestRisk(current: RiskLevel, risks: RiskLevel[]): RiskLevel {
     return "medium";
   }
   return "low";
+}
+
+function normalizeRefreshRequest(request: DashboardMode | RefreshRequest | undefined, selectedFeatureId?: string): RefreshRequest {
+  if (!request || typeof request === "string") {
+    return {
+      mode: request,
+      selectedFeatureId
+    };
+  }
+  return {
+    ...request,
+    selectedFeatureId: request.selectedFeatureId ?? selectedFeatureId
+  };
+}
+
+function normalizeChangedPaths(paths: readonly string[]): string[] {
+  return [...new Set(paths.map((item) => item.replaceAll("\\", "/").replace(/^\/+/, "")).filter(Boolean))].sort();
 }

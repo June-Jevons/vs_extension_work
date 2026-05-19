@@ -6,6 +6,7 @@ import {
   getModeLabel
 } from "../webview/dashboardState";
 import { ExtensionToWebviewMessage, isExtensionToWebviewMessage } from "../webview/messageProtocol";
+import { buildFeatureFocusViewModel } from "../webview/featureFocusViewModel";
 import { buildGraphViewForTarget } from "../webview/graphViewModel";
 import { GraphCanvas } from "./GraphCanvas";
 import { postToExtension } from "./vscodeApi";
@@ -164,6 +165,13 @@ function Dashboard({ state }: { state: DashboardState }): React.JSX.Element {
           <Diagnostic label="Git branch" value={state.diagnostics.gitBranch} />
           <Diagnostic label="Graph nodes" value={state.diagnostics.graphNodeCount} />
           <Diagnostic label="Graph edges" value={state.diagnostics.graphEdgeCount} />
+          <Diagnostic label="Cache hits" value={state.diagnostics.cache.hitCount} />
+          <Diagnostic label="Cache misses" value={state.diagnostics.cache.missCount} />
+          <Diagnostic label="Cache entries" value={state.diagnostics.cache.entryCount} />
+          <Diagnostic label="Incremental" value={state.diagnostics.incremental ? "true" : "false"} />
+          <Diagnostic label="Changed paths" value={state.diagnostics.changedPathCount} />
+          <Diagnostic label="Index reason" value={state.diagnostics.workspaceIndexReason} />
+          <Diagnostic label="Total refresh" value={`${state.diagnostics.analysisTimings.find((entry) => entry.phase === "total refresh")?.durationMs ?? 0} ms`} />
           <Diagnostic label="Unresolved imports" value={state.diagnostics.unresolvedImportCount} />
           <Diagnostic label="Updated" value={state.diagnostics.lastUpdatedIso} />
           {state.error ? <Diagnostic label="Error" value={state.error} /> : null}
@@ -247,10 +255,11 @@ function WholeArchitecture({ state }: { state: DashboardState }): React.JSX.Elem
 }
 
 function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activeFeatureId?: string }): React.JSX.Element {
-  const activeFeature = state.snapshot.featureBlocks.find((feature) => feature.id === activeFeatureId);
-  const modules = activeFeature
-    ? state.snapshot.modules.filter((moduleNode) => activeFeature.moduleIds.includes(moduleNode.id))
-    : [];
+  const focusView = useMemo(
+    () => buildFeatureFocusViewModel(state, activeFeatureId),
+    [activeFeatureId, state]
+  );
+  const activeFeature = focusView.activeFeature;
   const graphView = useMemo(
     () => buildGraphViewForTarget(state, "featureInternal", activeFeature?.id),
     [activeFeature?.id, state]
@@ -274,7 +283,7 @@ function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activ
       <section data-testid="module-composition-panel">
         <h2>{activeFeature?.label ?? "Feature"} Modules</h2>
         <ul className="plain-list">
-          {modules.slice(0, 12).map((moduleNode) => (
+          {focusView.runtimeModules.slice(0, 12).map((moduleNode) => (
             <li key={moduleNode.id}>{moduleNode.path}</li>
           ))}
         </ul>
@@ -287,7 +296,7 @@ function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activ
       <section data-testid="related-tests">
         <h2>Related Tests</h2>
         <ul className="plain-list">
-          {modules.filter((moduleNode) => moduleNode.isTest).map((moduleNode) => (
+          {focusView.relatedTests.map((moduleNode) => (
             <li key={moduleNode.id}>{moduleNode.path}</li>
           ))}
         </ul>

@@ -1,19 +1,22 @@
 import * as vscode from "vscode";
 import { classifyFeatureForPath, getFeatureDefinition, isTestPath } from "./featureMapper";
-import { ModuleNode } from "../webview/dashboardState";
+import { FileAnalysisCache, FileAnalysisCacheStats, FileAnalysisValue, toModuleImportRecord } from "./fileAnalysisCache";
+import { AnalysisTimingRecorder } from "./analysisTiming";
+import { ModuleNode, ScannerStatus } from "../webview/dashboardState";
 import { ModuleImportRecord } from "../graph/dependencyGraph";
 import { parsePythonImports } from "../graph/importParser";
 import { logInfo } from "./outputChannel";
-import {
-  DirectoryEntryLike,
-  isWatchedScanPath,
-  scanReadDirectoryTree,
-  shouldExcludePath
-} from "./readDirectoryFallbackScanner";
+import { shouldExcludePath } from "./scanPathFilter";
+import { ScannerBackendSelection, selectScannerBackend } from "./scannerBackendSelection";
+import { describePathKind } from "./pathKind";
 
 export interface WorkspaceScanConfig {
   excludeGlobs: string[];
   maxFilesToAnalyze: number;
+  workspaceKey: string;
+  fileCache?: FileAnalysisCache;
+  timing?: AnalysisTimingRecorder;
+  changedPaths?: readonly string[];
 }
 
 export interface WorkspaceScanResult {
@@ -24,8 +27,9 @@ export interface WorkspaceScanResult {
   totalFunctions: number;
   unreadableFiles: string[];
   discoveredFileCount: number;
-  scannerStatus: "findFiles" | "readDirectory fallback";
-  fallbackReason?: string;
+  scannerStatus: ScannerStatus;
+  scannerBackend: ScannerBackendSelection;
+  cache: FileAnalysisCacheStats;
 }
 
 const WATCHED_SCAN_GLOBS = [
@@ -45,65 +49,67 @@ export async function scanWorkspace(
   config: WorkspaceScanConfig
 ): Promise<WorkspaceScanResult> {
   logInfo(`scan start: workspace=${folder.uri.toString()}`);
-  const foundFiles = await findWorkspaceFiles(folder, config);
+  const scannerBackend = selectScannerBackend(describePathKind(folder.uri.fsPath));
+  logInfo(`scanner backend selected=${scannerBackend.backend}, reason=${scannerBackend.reason}`);
+  config.fileCache?.beginRun();
+  const foundFiles = await (config.timing?.measure("scanner/index discovery", () => findWorkspaceFiles(folder, config))
+    ?? findWorkspaceFiles(folder, config));
   const uris = foundFiles.uris;
   const modules: ModuleNode[] = [];
   const importRecords: ModuleImportRecord[] = [];
-  const unreadableFiles: string[] = [...foundFiles.unreadableFiles];
+  const unreadableFiles: string[] = [];
   let totalClasses = 0;
   let totalFunctions = 0;
+  const currentPythonPaths = new Set<string>();
 
   for (const uri of uris) {
     const relativePath = normalizeRelativePath(folder.uri, uri);
     if (!relativePath.endsWith(".py")) {
       continue;
     }
+    currentPythonPaths.add(relativePath);
 
-    const moduleId = moduleIdFromPath(relativePath);
-    let source = "";
-    try {
-      source = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8");
-    } catch {
-      unreadableFiles.push(relativePath);
+    const stat = await (config.timing?.measure("file stat/hash", () => Promise.resolve(vscode.workspace.fs.stat(uri)))
+      ?? vscode.workspace.fs.stat(uri));
+    const metadata = {
+      workspaceKey: config.workspaceKey,
+      relativePath,
+      mtimeMs: stat.mtime,
+      size: stat.size
+    };
+    const cached = config.timing?.measureSync("cache read", () => config.fileCache?.get(metadata))
+      ?? config.fileCache?.get(metadata);
+    if (cached) {
+      modules.push(cached.module);
+      importRecords.push(toModuleImportRecord(cached));
+      totalClasses += cached.totalClasses;
+      totalFunctions += cached.totalFunctions;
+      continue;
     }
 
-    const metrics = countPythonMetrics(source);
-    totalClasses += metrics.classes;
-    totalFunctions += metrics.functions;
-    const isTest = isTestPath(relativePath);
-    const classification = isTest
-      ? {
-        feature: getFeatureDefinition("tests"),
-        reason: {
-          category: "path-pattern-match" as const,
-          detail: "Path is under tests or follows test naming.",
-          confidence: "high" as const
-        }
-      }
-      : classifyFeatureForPath(relativePath);
-    const feature = classification.feature;
+    let source: string;
+    try {
+      const buffer = await (config.timing?.measure("file read", () => Promise.resolve(vscode.workspace.fs.readFile(uri)))
+        ?? vscode.workspace.fs.readFile(uri));
+      source = Buffer.from(buffer).toString("utf8");
+    } catch {
+      unreadableFiles.push(relativePath);
+      source = "";
+    }
 
-    modules.push({
-      id: moduleId,
-      name: moduleId.split("/").at(-1) ?? moduleId,
-      path: relativePath,
-      language: "python",
-      packageName: moduleId.replaceAll("/", "."),
-      featureId: feature.id,
-      classificationReason: classification.reason,
-      imports: [],
-      importedBy: [],
-      isEntryPoint: isLikelyEntryPoint(relativePath, source),
-      isTest,
-      isOrphan: false,
-      riskLevel: feature.defaultRisk
-    });
+    const analysis = config.timing?.measureSync("parse imports/metrics", () => analyzePythonFile(relativePath, source))
+      ?? analyzePythonFile(relativePath, source);
+    config.timing?.measureSync("cache write", () => config.fileCache?.set(metadata, analysis));
+    if (!config.timing) {
+      config.fileCache?.set(metadata, analysis);
+    }
 
-    importRecords.push({
-      moduleId,
-      imports: parsePythonImports(source)
-    });
+    modules.push(analysis.module);
+    importRecords.push(toModuleImportRecord(analysis));
+    totalClasses += analysis.totalClasses;
+    totalFunctions += analysis.totalFunctions;
   }
+  config.fileCache?.reconcileWorkspace(config.workspaceKey, currentPythonPaths);
 
   const result = {
     modules,
@@ -114,10 +120,17 @@ export async function scanWorkspace(
     unreadableFiles,
     discoveredFileCount: uris.length,
     scannerStatus: foundFiles.scannerStatus,
-    fallbackReason: foundFiles.fallbackReason
+    scannerBackend,
+    cache: config.fileCache?.snapshotStats() ?? {
+      hitCount: 0,
+      missCount: 0,
+      invalidatedCount: 0,
+      deletedCount: 0,
+      entryCount: 0
+    }
   };
   logInfo(
-    `scan end: discoveredFiles=${result.discoveredFileCount}, pythonModules=${result.modules.length}, scannerStatus=${result.scannerStatus}${result.fallbackReason ? `, fallbackReason=${result.fallbackReason}` : ""}`
+    `scan end: discoveredFiles=${result.discoveredFileCount}, pythonModules=${result.modules.length}, scannerStatus=${result.scannerStatus}, cacheHits=${result.cache.hitCount}, cacheMisses=${result.cache.missCount}, cacheEntries=${result.cache.entryCount}`
   );
   return result;
 }
@@ -140,9 +153,7 @@ async function findWorkspaceFiles(
   config: WorkspaceScanConfig
 ): Promise<{
   uris: vscode.Uri[];
-  scannerStatus: "findFiles" | "readDirectory fallback";
-  fallbackReason?: string;
-  unreadableFiles: string[];
+  scannerStatus: ScannerStatus;
 }> {
   const byPath = new Map<string, vscode.Uri>();
   const maxPerGlob = Math.max(config.maxFilesToAnalyze, 1);
@@ -163,54 +174,15 @@ async function findWorkspaceFiles(
       if (byPath.size >= config.maxFilesToAnalyze) {
         return {
           uris: [...byPath.values()],
-          scannerStatus: "findFiles",
-          unreadableFiles: []
+          scannerStatus: "vscodeFindFiles"
         };
       }
     }
   }
 
-  const findFilesUris = [...byPath.values()];
-  const pythonFileCount = findFilesUris.filter((uri) => normalizeRelativePath(folder.uri, uri).endsWith(".py")).length;
-  if (pythonFileCount > 0) {
-    return {
-      uris: findFilesUris,
-      scannerStatus: "findFiles",
-      unreadableFiles: []
-    };
-  }
-
-  const fallbackReason = "vscode.workspace.findFiles returned zero Python files; using readDirectory recursion.";
-  logInfo(`scanner fallback: ${fallbackReason}`);
-  const fallback = await scanReadDirectoryTree(folder.uri, config, {
-    readDirectory: async (location) => {
-      const entries = await vscode.workspace.fs.readDirectory(location);
-      return entries.map(([name, fileType]): DirectoryEntryLike => ({
-        name,
-        kind: mapFileType(fileType)
-      }));
-    },
-    joinPath: (location, segment) => vscode.Uri.joinPath(location, segment),
-    relativePath: (root, location) => normalizeRelativePath(root, location)
-  });
-
-  const merged = new Map(byPath);
-  for (const uri of fallback.files) {
-    const relativePath = normalizeRelativePath(folder.uri, uri);
-    if (!isWatchedScanPath(relativePath) || shouldExcludePath(relativePath, config.excludeGlobs)) {
-      continue;
-    }
-    merged.set(relativePath, uri);
-    if (merged.size >= config.maxFilesToAnalyze) {
-      break;
-    }
-  }
-
   return {
-    uris: [...merged.values()],
-    scannerStatus: "readDirectory fallback",
-    fallbackReason,
-    unreadableFiles: fallback.unreadablePaths
+    uris: [...byPath.values()],
+    scannerStatus: "vscodeFindFiles"
   };
 }
 
@@ -230,16 +202,6 @@ function isLikelyEntryPoint(relativePath: string, source: string): boolean {
     || source.includes("if __name__ == '__main__'");
 }
 
-function mapFileType(fileType: vscode.FileType): DirectoryEntryLike["kind"] {
-  if ((fileType & vscode.FileType.Directory) === vscode.FileType.Directory) {
-    return "directory";
-  }
-  if ((fileType & vscode.FileType.File) === vscode.FileType.File) {
-    return "file";
-  }
-  return "other";
-}
-
 function countPythonMetrics(source: string): { classes: number; functions: number } {
   if (!source) {
     return {
@@ -253,5 +215,43 @@ function countPythonMetrics(source: string): { classes: number; functions: numbe
   return {
     classes,
     functions
+  };
+}
+
+function analyzePythonFile(relativePath: string, source: string): FileAnalysisValue {
+  const moduleId = moduleIdFromPath(relativePath);
+  const metrics = countPythonMetrics(source);
+  const isTest = isTestPath(relativePath);
+  const classification = isTest
+    ? {
+      feature: getFeatureDefinition("tests"),
+      reason: {
+        category: "path-pattern-match" as const,
+        detail: "Path is under tests or follows test naming.",
+        confidence: "high" as const
+      }
+    }
+    : classifyFeatureForPath(relativePath);
+  const feature = classification.feature;
+
+  return {
+    module: {
+      id: moduleId,
+      name: moduleId.split("/").at(-1) ?? moduleId,
+      path: relativePath,
+      language: "python",
+      packageName: moduleId.replaceAll("/", "."),
+      featureId: feature.id,
+      classificationReason: classification.reason,
+      imports: [],
+      importedBy: [],
+      isEntryPoint: isLikelyEntryPoint(relativePath, source),
+      isTest,
+      isOrphan: false,
+      riskLevel: feature.defaultRisk
+    },
+    imports: parsePythonImports(source),
+    totalClasses: metrics.classes,
+    totalFunctions: metrics.functions
   };
 }

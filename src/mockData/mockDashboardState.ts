@@ -390,8 +390,19 @@ export function createMockDashboardState(
       changedFileCount: snapshot.changedFiles.length,
       gitBranch: snapshot.git?.branch ?? "unknown",
       gitStatusSource: "unavailable",
-      scannerStatus: "mock fallback",
+      scannerStatus: "unavailable",
       discoveredFileCount: snapshot.health.totalPythonFiles,
+      analysisTimings: [],
+      cache: {
+        hitCount: 0,
+        missCount: 0,
+        invalidatedCount: 0,
+        deletedCount: 0,
+        entryCount: 0
+      },
+      incremental: false,
+      changedPathCount: 0,
+      workspaceIndexReason: "standalone mock state",
       lastUpdatedIso: capturedAtIso,
       baselineCapturedAtIso: baselineDiff.baselineCapturedAtIso
     },

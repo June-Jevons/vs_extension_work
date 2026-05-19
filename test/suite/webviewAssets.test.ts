@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { getDashboardWebviewHtml } from "../../src/webview/html";
-import { findViteEntry, getWebviewAssetUris } from "../../src/webview/webviewAssets";
+import { findViteEntry, getWebviewAssetUris, getWebviewBundleStatus } from "../../src/webview/webviewAssets";
 
 class FakeUri {
   constructor(
@@ -49,6 +49,9 @@ fs.writeFileSync(
   }),
   "utf8"
 );
+fs.mkdirSync(path.join(tempRoot, "media", "webview", "assets"), { recursive: true });
+fs.writeFileSync(path.join(tempRoot, "media", "webview", "assets", "main-test.js"), "console.log('ok');", "utf8");
+fs.writeFileSync(path.join(tempRoot, "media", "webview", "assets", "main-test.css"), "body{}", "utf8");
 
 const assets = getWebviewAssetUris(webview, new FakeUri(tempRoot, tempRoot));
 assert.strictEqual(assets.kind, "available");
@@ -56,6 +59,8 @@ if (assets.kind === "available") {
   assert.ok(assets.scriptUri.includes("assets/main-test.js"));
   assert.strictEqual(assets.styleUris.length, 1);
 }
+const bundleStatus = getWebviewBundleStatus(tempRoot);
+assert.strictEqual(bundleStatus.kind, "available");
 
 const missingRoot = fs.mkdtempSync(path.join(os.tmpdir(), "lam-webview-missing-"));
 const missingHtml = getDashboardWebviewHtml(

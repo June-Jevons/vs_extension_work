@@ -1,62 +1,75 @@
 import * as assert from "assert";
+import * as fs from "fs";
+import * as path from "path";
 import { createMockDashboardState } from "../../src/mockData/mockDashboardState";
-import { DashboardMode, DashboardState, ModuleNode } from "../../src/webview/dashboardState";
+import { buildFeatureFocusViewModel } from "../../src/webview/featureFocusViewModel";
+import { getGraphStatsForMode } from "../../src/webview/graphStats";
+import { buildGraphViewForTarget, GraphViewTarget } from "../../src/webview/graphViewModel";
+import {
+  DashboardMode,
+  DashboardState,
+  DependencyEdge,
+  FeatureBlock,
+  ModuleNode,
+  RiskItem,
+  dashboardModes
+} from "../../src/webview/dashboardState";
 import { isExtensionToWebviewMessage, isWebviewToExtensionMessage } from "../../src/webview/messageProtocol";
-import { renderDashboardShell } from "../../src/webview/renderers";
 
-const commonTestIds = [
+const repositoryRoot = path.resolve(__dirname, "..", "..", "..");
+const appSource = fs.readFileSync(path.join(repositoryRoot, "src", "webview-app", "App.tsx"), "utf8");
+
+const requiredReactTestIds = [
   "dashboard-root",
   "workspace-diagnostics-panel",
-  "mode-liveChanges",
-  "mode-wholeArchitecture",
-  "mode-featureFocus",
-  "mode-diffSinceBaseline"
+  "current-change-area",
+  "architecture-impact-graph",
+  "changed-files-table",
+  "dependency-graph",
+  "validation-status-row",
+  "whole-architecture-diagram",
+  "architecture-overview-cards",
+  "architecture-health-cards",
+  "feature-selector",
+  "module-composition-panel",
+  "internal-dependency-graph",
+  "related-external-dependencies",
+  "related-tests",
+  "baseline-selector",
+  "baseline-summary-cards",
+  "before-after-graph",
+  "top-changes-table",
+  "structural-timeline"
 ];
 
-const requiredByMode: Record<DashboardMode, string[]> = {
-  liveChanges: [
-    "current-change-area",
-    "risk-card-high",
-    "risk-card-medium",
-    "risk-card-low",
-    "architecture-impact-graph",
-    "changed-files-table",
-    "dependency-graph",
-    "validation-status-row"
-  ],
-  wholeArchitecture: [
-    "whole-architecture-diagram",
-    "architecture-overview-cards",
-    "architecture-health-cards"
-  ],
-  featureFocus: [
-    "feature-selector",
-    "module-composition-panel",
-    "internal-dependency-graph",
-    "related-external-dependencies",
-    "related-tests"
-  ],
-  diffSinceBaseline: [
-    "baseline-selector",
-    "baseline-summary-cards",
-    "before-after-graph",
-    "top-changes-table",
-    "structural-timeline"
-  ]
+for (const testId of requiredReactTestIds) {
+  assert.ok(appSource.includes(`"${testId}"`), `React dashboard source is missing data-testid ${testId}`);
+}
+assert.ok(appSource.includes("dashboardModes.map"), "React dashboard should render mode tabs from the shared mode list");
+assert.ok(appSource.includes("mode-${mode}"), "React dashboard should expose stable mode tab test ids");
+assert.ok(appSource.includes("risk-card-${level}"), "React dashboard should expose stable risk card test ids");
+
+const graphTargetsByMode: Record<DashboardMode, GraphViewTarget[]> = {
+  liveChanges: ["liveImpact", "liveDependency"],
+  wholeArchitecture: ["wholeArchitecture"],
+  featureFocus: ["featureInternal"],
+  diffSinceBaseline: ["baselineDiff"]
 };
 
-for (const mode of Object.keys(requiredByMode) as DashboardMode[]) {
+for (const mode of dashboardModes) {
   const state = createMockDashboardState(mode);
-  const html = renderDashboardShell(state);
-  const requiredIds = [...commonTestIds, ...requiredByMode[mode]];
+  const graphStats = getGraphStatsForMode(state);
+  assert.ok(graphStats.nodes > 0, `${mode} should expose graph nodes for React Flow`);
 
-  for (const testId of requiredIds) {
-    assert.ok(html.includes(`data-testid="${testId}"`), `${mode} is missing ${testId}`);
+  for (const target of graphTargetsByMode[mode]) {
+    const view = buildGraphViewForTarget(state, target, state.selectedFeatureId);
+    assert.strictEqual(view.target, target);
+    assert.ok(view.nodes.length > 0, `${mode}/${target} should include nodes`);
+    for (const node of view.nodes) {
+      assert.strictEqual(Number.isFinite(node.width), true, `${node.id} should have a finite width`);
+      assert.strictEqual(Number.isFinite(node.height), true, `${node.id} should have a finite height`);
+    }
   }
-
-  assert.ok(html.includes("<svg"), `${mode} should include graph SVG markup`);
-  assert.ok(!html.trim().startsWith("#"), `${mode} should not render raw Markdown`);
-  assert.ok(!html.trim().startsWith("{"), `${mode} should not render raw JSON`);
 }
 
 assert.ok(isWebviewToExtensionMessage({ type: "ready" }));
@@ -73,65 +86,63 @@ assert.ok(isExtensionToWebviewMessage({ type: "loading", message: "Refreshing." 
 assert.ok(!isExtensionToWebviewMessage({ type: "state", state: undefined }));
 assert.ok(!isExtensionToWebviewMessage({ type: "error", message: "" }));
 
-const liveState = createRealDashboardState("wholeArchitecture");
-const liveHtml = renderDashboardShell(liveState);
-assert.ok(!liveHtml.includes("Mock validation state"), "dashboard should not contain the retired static subtitle");
-assert.ok(liveHtml.includes("Live workspace data"), "live state should identify live workspace data");
-assert.ok(liveHtml.includes("<strong>Mock data:</strong>false"), "live diagnostics should explicitly report Mock data: false");
-assert.ok(!/\bmock\b(?! data:<\/strong>false)/i.test(liveHtml), "live dashboard HTML should only contain mock wording in the explicit Mock data: false field");
-assert.ok(!liveHtml.includes("Unmapped / Unknown"), "live dashboard should use Unclassified Modules wording");
+const liveState = createRealDashboardState("featureFocus", "motion-planning");
+assert.strictEqual(liveState.isMockData, false);
+assert.strictEqual(liveState.diagnostics.stateSource, "real");
+assert.strictEqual(liveState.diagnostics.pathKind, "linux-native");
+assert.strictEqual(liveState.diagnostics.gitStatusSource, "unavailable");
+assert.strictEqual(liveState.diagnostics.scannerStatus, "vscodeFindFiles");
+
+const focusView = buildFeatureFocusViewModel(liveState, "motion-planning");
+assert.deepStrictEqual(focusView.runtimeModules.map((moduleNode) => moduleNode.id), ["src/motion/box_motion"]);
+assert.deepStrictEqual(focusView.relatedTests.map((moduleNode) => moduleNode.path), [
+  "tests/test_box_motion_auto_generate.py",
+  "tests/test_motion_program.py"
+]);
+
+const focusGraph = buildGraphViewForTarget(liveState, "featureInternal", "motion-planning");
+assert.ok(focusGraph.nodes.some((node) => node.id === "src/motion/box_motion"));
+assert.ok(!focusGraph.nodes.some((node) => node.id === "tests/test_motion_program"), "Feature internal graph should keep related tests out of runtime composition");
+
 for (const sampleNode of ["runtime-config", "operator-launcher", "tests-config-scanner", "launcher-subprocess-env", "ros-launch-runtime"]) {
-  assert.ok(!liveHtml.includes(sampleNode), `live real-state render should not leak mock sample node ${sampleNode}`);
+  assert.ok(!JSON.stringify(liveState).includes(sampleNode), `live real-state fixture should not leak mock sample node ${sampleNode}`);
 }
-for (const retiredMetric of ["Main GUI", "ROS2 Nodes", "CLI Tools", "Launch Files"]) {
-  assert.ok(!liveHtml.includes(retiredMetric), `live real-state render should not include hardcoded metric ${retiredMetric}`);
-}
-assert.ok(liveHtml.includes("<strong>Python files:</strong>"), "diagnostics should use clear Python files label");
-assert.ok(liveHtml.includes("<strong>Changed files:</strong>"), "diagnostics should use clear Changed files label");
-assert.ok(liveHtml.includes("<strong>Git status source:</strong>"), "diagnostics should use clear Git status source label");
-assert.ok(liveHtml.includes("<strong>Path type:</strong>"), "diagnostics should use clear Path type label");
-assert.ok(liveHtml.includes("<strong>Top unclassified paths:</strong>"), "diagnostics should include top unclassified paths");
-assert.ok(liveHtml.includes("src/misc/legacy_loader.py"), "small unclassified module sets should show real module paths");
-const liveChangesHtml = renderDashboardShell(createRealDashboardState("liveChanges"));
-assert.ok(liveChangesHtml.includes("Motion module changed."), "changed files table should render real changed-file reasons");
 
-const featureFocusHtml = renderDashboardShell(createRealDashboardState("featureFocus", "motion-planning"));
-const compositionPanel = extractTestId(featureFocusHtml, "module-composition-panel");
-const relatedTestsPanel = extractTestId(featureFocusHtml, "related-tests");
-assert.ok(compositionPanel.includes("box_motion"), "Motion Planning runtime composition should include runtime motion modules");
-assert.ok(!compositionPanel.includes("test_motion_program"), "Motion Planning runtime composition must not include test modules");
-assert.ok(!compositionPanel.includes("test_box_motion_auto_generate"), "Motion Planning runtime composition must not include related tests");
-assert.ok(relatedTestsPanel.includes("tests/test_motion_program.py"), "Motion Planning related tests should include motion test by import/path relationship");
-assert.ok(relatedTestsPanel.includes("tests/test_box_motion_auto_generate.py"), "box motion test should appear as a related test");
-assert.ok(!relatedTestsPanel.includes("tests/test_config_loader.py"), "unrelated tests should not be selected globally");
-
-console.log("Unit renderer and message protocol checks passed.");
+console.log("React dashboard contract and message protocol checks passed.");
 
 function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "motion-planning"): DashboardState {
   const capturedAtIso = "2026-05-19T02:00:00+08:00";
   const modules: ModuleNode[] = [
-    moduleNode("src/motion/box_motion", "box_motion", "src/motion/box_motion.py", "motion-planning", ["src/safety/collision_guard"], ["src/gui/motion_panel", "tests/test_motion_program"], false),
-    moduleNode("src/safety/collision_guard", "collision_guard", "src/safety/collision_guard.py", "safety-layer", [], ["src/motion/box_motion"], false),
-    moduleNode("src/gui/motion_panel", "motion_panel", "src/gui/motion_panel.py", "gui-layer", ["src/motion/box_motion"], [], false),
-    moduleNode("src/config/runtime_config", "runtime_config", "src/config/runtime_config.py", "config-system", [], [], false),
-    moduleNode("tests/test_motion_program", "test_motion_program", "tests/test_motion_program.py", "tests", ["src/motion/box_motion"], [], true),
-    moduleNode("tests/test_box_motion_auto_generate", "test_box_motion_auto_generate", "tests/test_box_motion_auto_generate.py", "tests", [], [], true),
-    moduleNode("tests/test_config_loader", "test_config_loader", "tests/test_config_loader.py", "tests", ["src/config/runtime_config"], [], true),
-    moduleNode("src/misc/legacy_loader", "legacy_loader", "src/misc/legacy_loader.py", "unmapped-unknown", [], [], false)
+    moduleNode("src/motion/box_motion", "box_motion", "src/motion/box_motion.py", "motion-planning", ["src/safety/collision_guard"], ["src/gui/motion_panel", "tests/test_motion_program", "tests/test_box_motion_auto_generate"], false, "high"),
+    moduleNode("src/safety/collision_guard", "collision_guard", "src/safety/collision_guard.py", "safety-layer", [], ["src/motion/box_motion"], false, "medium"),
+    moduleNode("src/gui/motion_panel", "motion_panel", "src/gui/motion_panel.py", "gui-layer", ["src/motion/box_motion"], [], false, "medium"),
+    moduleNode("tests/test_motion_program", "test_motion_program", "tests/test_motion_program.py", "tests", ["src/motion/box_motion"], [], true, "low"),
+    moduleNode("tests/test_box_motion_auto_generate", "test_box_motion_auto_generate", "tests/test_box_motion_auto_generate.py", "tests", ["src/motion/box_motion"], [], true, "low"),
+    moduleNode("tests/test_config_loader", "test_config_loader", "tests/test_config_loader.py", "tests", ["src/config/runtime_config"], [], true, "low"),
+    moduleNode("src/misc/legacy_loader", "legacy_loader", "src/misc/legacy_loader.py", "unmapped-unknown", [], [], false, "low")
   ];
-  const dependencies = [
-    { from: "src/motion/box_motion", to: "src/safety/collision_guard", kind: "import" as const, confidence: "high" as const },
-    { from: "src/gui/motion_panel", to: "src/motion/box_motion", kind: "import" as const, confidence: "high" as const },
-    { from: "tests/test_motion_program", to: "src/motion/box_motion", kind: "test" as const, confidence: "high" as const },
-    { from: "tests/test_config_loader", to: "src/config/runtime_config", kind: "test" as const, confidence: "high" as const }
+  const dependencies: DependencyEdge[] = [
+    edge("src/motion/box_motion", "src/safety/collision_guard"),
+    edge("src/gui/motion_panel", "src/motion/box_motion"),
+    edge("tests/test_motion_program", "src/motion/box_motion", "test"),
+    edge("tests/test_box_motion_auto_generate", "src/motion/box_motion", "test"),
+    edge("tests/test_config_loader", "src/config/runtime_config", "test")
   ];
-  const featureBlocks = [
+  const featureBlocks: FeatureBlock[] = [
     featureBlock("motion-planning", "Motion Planning", ["src/motion/box_motion"], 1, 1),
     featureBlock("safety-layer", "Safety Layer", ["src/safety/collision_guard"], 1, 0),
     featureBlock("gui-layer", "GUI Layer", ["src/gui/motion_panel"], 0, 1),
-    featureBlock("config-system", "Config System", ["src/config/runtime_config"], 1, 0),
     featureBlock("tests", "Tests", ["tests/test_motion_program", "tests/test_box_motion_auto_generate", "tests/test_config_loader"], 0, 2),
-    featureBlock("unmapped-unknown", "Unclassified Modules", ["src/misc/legacy_loader"], 0, 0, "1 unclassified module. Sample: src/misc/legacy_loader.py")
+    featureBlock("unmapped-unknown", "Unclassified Modules", ["src/misc/legacy_loader"], 0, 0)
+  ];
+  const risks: RiskItem[] = [
+    {
+      id: "high",
+      label: "High",
+      level: "high",
+      count: 1,
+      detail: "Motion module changed."
+    }
   ];
 
   return {
@@ -148,12 +159,7 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
       workspaceName: "RealFixture",
       rootUri: "file:///real-fixture",
       capturedAtIso,
-      git: {
-        branch: "main",
-        changedFileCount: 1,
-        ahead: 0,
-        behind: 0
-      },
+      git: undefined,
       modules,
       dependencies,
       featureBlocks,
@@ -176,25 +182,9 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
           changedFileCount: 1,
           riskLevel: "high",
           reason: "Feature contains changed files."
-        },
-        {
-          featureId: "safety-layer",
-          label: "Safety Layer",
-          moduleCount: 1,
-          changedFileCount: 0,
-          riskLevel: "medium",
-          reason: "Connected through imports."
         }
       ],
-      risks: [
-        {
-          id: "high",
-          label: "High",
-          level: "high",
-          count: 1,
-          detail: "Motion module changed."
-        }
-      ],
+      risks,
       health: {
         totalPythonFiles: modules.length,
         totalModules: modules.length,
@@ -222,15 +212,26 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
       unclassifiedModulePaths: ["src/misc/legacy_loader.py"],
       unclassifiedReasonCounts: [{ reason: "no-strong-import-neighbor-inference", count: 1 }],
       testModuleCount: 3,
-      runtimeModuleCount: 5,
-      parsedImportStatementCount: 4,
-      resolvedLocalEdgeCount: 4,
+      runtimeModuleCount: 4,
+      parsedImportStatementCount: dependencies.length,
+      resolvedLocalEdgeCount: dependencies.length,
       unresolvedImportCount: 0,
       changedFileCount: 1,
-      gitBranch: "main",
-      gitStatusSource: "CLI fallback",
-      scannerStatus: "findFiles",
+      gitBranch: "unknown",
+      gitStatusSource: "unavailable",
+      scannerStatus: "vscodeFindFiles",
       discoveredFileCount: modules.length,
+      analysisTimings: [],
+      cache: {
+        hitCount: 0,
+        missCount: 0,
+        invalidatedCount: 0,
+        deletedCount: 0,
+        entryCount: 0
+      },
+      incremental: false,
+      changedPathCount: 0,
+      workspaceIndexReason: "fixture full scan",
       lastUpdatedIso: capturedAtIso
     },
     isMockData: false,
@@ -241,16 +242,17 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
 function moduleNode(
   id: string,
   name: string,
-  path: string,
+  modulePath: string,
   featureId: string,
   imports: string[],
   importedBy: string[],
-  isTest: boolean
+  isTest: boolean,
+  riskLevel: ModuleNode["riskLevel"]
 ): ModuleNode {
   return {
     id,
     name,
-    path,
+    path: modulePath,
     language: "python",
     packageName: id.replaceAll("/", "."),
     featureId,
@@ -259,7 +261,7 @@ function moduleNode(
     isEntryPoint: false,
     isTest,
     isOrphan: importedBy.length === 0,
-    riskLevel: isTest ? "low" : "medium"
+    riskLevel
   };
 }
 
@@ -268,26 +270,30 @@ function featureBlock(
   label: string,
   moduleIds: string[],
   incomingEdges: number,
-  outgoingEdges: number,
-  description = `${label} fixture feature.`
-): DashboardState["snapshot"]["featureBlocks"][number] {
+  outgoingEdges: number
+): FeatureBlock {
   return {
     id,
     label,
-    description,
+    description: `${label} fixture feature.`,
     pathPatterns: [],
     moduleIds,
     incomingEdges,
     outgoingEdges,
-    changedFileCount: 0,
+    changedFileCount: id === "motion-planning" ? 1 : 0,
     riskLevel: id === "motion-planning" ? "high" : "medium"
   };
 }
 
-function extractTestId(html: string, testId: string): string {
-  const marker = `data-testid="${testId}"`;
-  const start = html.indexOf(marker);
-  assert.ok(start >= 0, `${testId} should exist`);
-  const nextSection = html.indexOf("data-testid=", start + marker.length);
-  return html.slice(start, nextSection > start ? nextSection : undefined);
+function edge(
+  from: string,
+  to: string,
+  kind: DependencyEdge["kind"] = "import"
+): DependencyEdge {
+  return {
+    from,
+    to,
+    kind,
+    confidence: "high"
+  };
 }

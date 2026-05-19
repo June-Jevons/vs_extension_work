@@ -6,7 +6,7 @@ const testProfileRoot = path.resolve(".vscode-test", "isolated", testRunId);
 
 export default defineConfig({
   files: "out-test/test/vscode/**/*.test.js",
-  workspaceFolder: ".",
+  workspaceFolder: "test/fixtures/python-workspace",
   mocha: {
     timeout: 60000,
     ui: "tdd"

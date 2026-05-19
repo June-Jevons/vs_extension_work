@@ -3,6 +3,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { commandIds } from "../../src/commands/commands";
+import { getGitStatus } from "../../src/git/gitProvider";
+import { getDashboardWebviewHtml } from "../../src/webview/html";
 import { isWebviewToExtensionMessage } from "../../src/webview/messageProtocol";
 
 declare const suite: (name: string, callback: () => void) => void;
@@ -81,6 +83,12 @@ suite("Live Architecture Map VS Code integration", () => {
       panelTitle?: string;
       viewType?: string;
       visible?: boolean;
+      stateSource?: string;
+      scannerStatus?: string;
+      gitStatusSource?: string;
+      webviewBundleStatus?: string;
+      isMockData?: boolean;
+      diagnosticReason?: string;
       wroteWorkspaceFiles?: boolean;
     };
 
@@ -89,7 +97,37 @@ suite("Live Architecture Map VS Code integration", () => {
     assert.strictEqual(result.panelTitle, "Live Architecture Map: liveChanges");
     assert.strictEqual(result.viewType, "liveArchitectureMap.dashboard");
     assert.strictEqual(result.visible, true);
+    assert.strictEqual(result.stateSource, "real");
+    assert.strictEqual(result.scannerStatus, "vscodeFindFiles");
+    assert.strictEqual(result.webviewBundleStatus, "available");
+    assert.strictEqual(result.isMockData, false);
     assert.strictEqual(result.wroteWorkspaceFiles, false);
+  });
+
+  test("Git provider reports VS Code API status or explicit unavailable reason", async () => {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    assert.ok(folder, "fixture workspace should be open");
+
+    const status = await getGitStatus(folder);
+    assert.ok(status.source === "VS Code Git API" || status.source === "unavailable");
+    if (status.source === "unavailable") {
+      assert.ok(status.unavailableReason && status.unavailableReason.length > 0, "unavailable Git status should include a reason");
+    }
+  });
+
+  test("missing webview bundle renders an explicit error shell", () => {
+    const artifactsRoot = path.join(requireExtension(extension).extensionPath, "artifacts");
+    fs.mkdirSync(artifactsRoot, { recursive: true });
+    const tempRoot = fs.mkdtempSync(path.join(artifactsRoot, "missing-webview-"));
+    const html = getDashboardWebviewHtml(
+      fakeWebview as unknown as Parameters<typeof getDashboardWebviewHtml>[0],
+      new FakeUri(tempRoot, tempRoot) as unknown as Parameters<typeof getDashboardWebviewHtml>[1],
+      "nonce-test"
+    );
+    assert.ok(html.includes("data-testid=\"webview-bundle-error\""));
+    assert.ok(html.includes("React webview bundle is unavailable."));
+    assert.ok(!html.includes("graph-svg"));
+    assert.ok(!html.includes("renderDashboardShell"));
   });
 
   test("message protocol accepts mode switching", () => {
@@ -174,6 +212,28 @@ Coverage: activation, command registration, Activity Bar launcher contribution, 
     );
   });
 });
+
+class FakeUri {
+  constructor(
+    readonly fsPath: string,
+    readonly path: string
+  ) {}
+
+  toString(): string {
+    return `file://${this.path}`;
+  }
+
+  with(change: { path: string }): FakeUri {
+    return new FakeUri(path.join("/", change.path), change.path);
+  }
+}
+
+const fakeWebview = {
+  cspSource: "vscode-webview:",
+  asWebviewUri(uri: FakeUri): FakeUri {
+    return new FakeUri(uri.fsPath, `/webview${uri.path}`);
+  }
+};
 
 function requireExtension(extension: vscode.Extension<unknown> | undefined): vscode.Extension<unknown> {
   assert.ok(extension, "extension should be activated by the first integration test");

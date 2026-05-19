@@ -2,6 +2,7 @@
 .vscode-test/**
 .vscode-test.mjs
 .gitignore
+.github/**
 .vscodeignore
 artifacts/**
 coverage/**

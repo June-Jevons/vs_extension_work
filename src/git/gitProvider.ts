@@ -1,13 +1,12 @@
-import * as cp from "child_process";
 import * as vscode from "vscode";
 import { logInfo } from "../core/outputChannel";
 import { ChangedFile, GitStatusSource, GitSummary } from "../webview/dashboardState";
-import { parseGitStatusPorcelain } from "./gitStatusParser";
 
 export interface GitStatusResult {
   summary?: GitSummary;
   source: GitStatusSource;
   changedFiles: Array<Pick<ChangedFile, "path" | "status">>;
+  unavailableReason?: string;
 }
 
 interface GitExtension {
@@ -39,27 +38,27 @@ interface GitResourceState {
 
 export async function getGitStatus(folder: vscode.WorkspaceFolder): Promise<GitStatusResult> {
   const fromApi = await getGitStatusFromVsCodeApi(folder);
-  if (fromApi) {
-    logInfo(`git status source=${fromApi.source}, branch=${fromApi.summary?.branch ?? "unknown"}, changedFileCount=${fromApi.changedFiles.length}`);
-    return fromApi;
-  }
-
-  const fromCli = await getGitStatusFromCli(folder.uri.fsPath);
-  logInfo(`git status source=${fromCli.source}, branch=${fromCli.summary?.branch ?? "unknown"}, changedFileCount=${fromCli.changedFiles.length}`);
-  return fromCli;
+  logInfo(`git status source=${fromApi.source}, branch=${fromApi.summary?.branch ?? "unknown"}, changedFileCount=${fromApi.changedFiles.length}${fromApi.unavailableReason ? `, unavailableReason=${fromApi.unavailableReason}` : ""}`);
+  return fromApi;
 }
 
-async function getGitStatusFromVsCodeApi(folder: vscode.WorkspaceFolder): Promise<GitStatusResult | undefined> {
+async function getGitStatusFromVsCodeApi(folder: vscode.WorkspaceFolder): Promise<GitStatusResult> {
   const extension = vscode.extensions.getExtension<GitExtension>("vscode.git");
   if (!extension) {
-    return undefined;
+    return gitUnavailable("VS Code Git extension is unavailable.");
   }
 
-  const gitExtension = extension.isActive ? extension.exports : await extension.activate();
+  let gitExtension: GitExtension;
+  try {
+    gitExtension = extension.isActive ? extension.exports : await extension.activate();
+  } catch (error: unknown) {
+    return gitUnavailable(`VS Code Git extension activation failed: ${error instanceof Error ? error.message : "unknown error"}`);
+  }
+
   const api = gitExtension.getAPI(1);
-  const repository = api.repositories.find((candidate) => candidate.rootUri.fsPath === folder.uri.fsPath);
+  const repository = api.repositories.find((candidate) => isSameOrParentPath(candidate.rootUri.fsPath, folder.uri.fsPath));
   if (!repository) {
-    return undefined;
+    return gitUnavailable("No VS Code Git repository matches the workspace folder.");
   }
 
   const changes = [
@@ -67,10 +66,12 @@ async function getGitStatusFromVsCodeApi(folder: vscode.WorkspaceFolder): Promis
     ...repository.state.indexChanges,
     ...repository.state.untrackedChanges
   ];
-  const changedFiles = dedupeChangedFiles(changes.map((change) => ({
-    path: normalizeRelativePath(folder.uri, change.resourceUri),
-    status: mapGitApiStatus(change.type)
-  })));
+  const changedFiles = dedupeChangedFiles(changes
+    .filter((change) => isSameOrParentPath(folder.uri.fsPath, change.resourceUri.fsPath))
+    .map((change) => ({
+      path: normalizeRelativePath(folder.uri, change.resourceUri),
+      status: mapGitApiStatus(change.type)
+    })));
 
   return {
     source: "VS Code Git API",
@@ -82,41 +83,6 @@ async function getGitStatusFromVsCodeApi(folder: vscode.WorkspaceFolder): Promis
     },
     changedFiles
   };
-}
-
-function getGitStatusFromCli(cwd: string): Promise<GitStatusResult> {
-  return new Promise((resolve) => {
-    cp.execFile("git", ["-c", "safe.directory=*", "status", "--porcelain=v1", "--branch"], { cwd, windowsHide: true }, (error, stdout) => {
-      if (error) {
-        resolve({
-          source: "unavailable",
-          changedFiles: []
-        });
-        return;
-      }
-
-      const lines = stdout.split(/\r?\n/);
-      const branchLine = lines.find((line) => line.startsWith("## "));
-      const branch = branchLine ? parseBranch(branchLine) : "unknown";
-      const statusOutput = lines.filter((line) => !line.startsWith("## ")).join("\n");
-      logInfo(`git status raw source=CLI fallback, porcelainLines=${statusOutput.split(/\r?\n/).filter(Boolean).length}`);
-      const parsed = parseGitStatusPorcelain(statusOutput, branch);
-      resolve({
-        source: "CLI fallback",
-        summary: {
-          branch,
-          changedFileCount: parsed.changedFiles.length,
-          ahead: 0,
-          behind: 0
-        },
-        changedFiles: parsed.changedFiles
-      });
-    });
-  });
-}
-
-function parseBranch(line: string): string {
-  return line.replace(/^##\s+/, "").split("...")[0]?.trim() || "unknown";
 }
 
 function normalizeRelativePath(rootUri: vscode.Uri, resourceUri: vscode.Uri): string {
@@ -171,4 +137,18 @@ function dedupeChangedFiles(files: Array<Pick<ChangedFile, "path" | "status">>):
   }
 
   return [...byPath.values()].sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function gitUnavailable(unavailableReason: string): GitStatusResult {
+  return {
+    source: "unavailable",
+    changedFiles: [],
+    unavailableReason
+  };
+}
+
+function isSameOrParentPath(repositoryRoot: string, workspacePath: string): boolean {
+  const normalizedRoot = repositoryRoot.replaceAll("\\", "/").replace(/\/+$/, "");
+  const normalizedWorkspace = workspacePath.replaceAll("\\", "/").replace(/\/+$/, "");
+  return normalizedWorkspace === normalizedRoot || normalizedWorkspace.startsWith(`${normalizedRoot}/`);
 }
