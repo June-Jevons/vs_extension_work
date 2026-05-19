@@ -357,7 +357,7 @@ export function createMockDashboardState(
     mode,
     workspace: {
       name: "ABB_ROS2",
-      rootUri: "C:/Users/Junekim/Work/ABB_ROS2",
+      rootUri: "file:///home/jevons/ABB_ROS2",
       isDirty: true,
       lastUpdatedIso: capturedAtIso,
       autoRefresh: true
@@ -367,7 +367,7 @@ export function createMockDashboardState(
     baselineDiff,
     diagnostics: {
       rootUri: snapshot.rootUri,
-      workspaceFsPath: "C:\\Users\\Junekim\\Work\\ABB_ROS2",
+      workspaceFsPath: "/home/jevons/ABB_ROS2",
       pathKind: "linux-native",
       stateSource: "mock",
       fallbackReason: "Bundled sample data is active.",
@@ -404,7 +404,7 @@ export function createMockSnapshot(): WorkspaceSnapshot {
   return {
     workspaceKey: "mock:ABB_ROS2",
     workspaceName: "ABB_ROS2",
-    rootUri: "C:/Users/Junekim/Work/ABB_ROS2",
+    rootUri: "file:///home/jevons/ABB_ROS2",
     capturedAtIso,
     git: {
       branch: "main",

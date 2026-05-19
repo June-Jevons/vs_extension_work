@@ -179,6 +179,34 @@ p {
   padding: 14px;
 }
 
+.risk-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mode-panel .risk-card {
+  min-height: 122px;
+}
+
+.risk-card strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 28px;
+}
+
+.risk-high {
+  border-color: #7d3b42;
+}
+
+.risk-medium {
+  border-color: #786231;
+}
+
+.risk-low {
+  border-color: #3c7451;
+}
+
 .plain-list {
   margin: 12px 0 0;
   padding-left: 18px;
@@ -193,15 +221,140 @@ p {
   font-size: 12px;
 }
 
-.graph-surface {
-  height: 240px;
-  margin-top: 12px;
+.graph-card {
+  grid-column: 1 / -1;
+}
+
+.graph-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.graph-card-header p {
+  margin: 6px 0 0;
+}
+
+.graph-card-header span {
+  flex: none;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #374554;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: #aebdcc;
+  font-size: 12px;
+}
+
+.react-flow-frame {
+  height: 430px;
+  min-height: 430px;
+  overflow: hidden;
+  border: 1px solid #344453;
+  border-radius: 8px;
+  background: #0e151c;
+}
+
+.graph-loading,
+.graph-error {
+  height: 430px;
   display: grid;
   place-items: center;
-  border: 1px dashed #496171;
+  border: 1px solid #344453;
   border-radius: 8px;
   background: #101820;
-  color: #96a9b8;
+  color: #c8d4df;
+}
+
+.graph-error {
+  gap: 8px;
+  color: #ffc7c7;
+}
+
+.graph-node {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  border: 1px solid #4b5d6d;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #16202a;
+  color: #e7edf4;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.graph-node strong,
+.graph-node span,
+.graph-node small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-node strong {
+  font-size: 13px;
+}
+
+.graph-node span {
+  color: #b9c7d4;
+  font-size: 11px;
+}
+
+.graph-node small {
+  color: #91a2b0;
+  font-size: 10px;
+}
+
+.graph-node-feature {
+  background: #182531;
+}
+
+.graph-node-module {
+  background: #151f24;
+}
+
+.graph-node-summary {
+  background: #221f1c;
+}
+
+.graph-node.risk-high {
+  border-color: #d45b66;
+}
+
+.graph-node.risk-medium {
+  border-color: #d3ae53;
+}
+
+.graph-node.risk-low {
+  border-color: #69c989;
+}
+
+.graph-handle {
+  width: 7px;
+  height: 7px;
+  border-color: #d5e1eb;
+  background: #90a9ba;
+}
+
+.react-flow__edge-textbg {
+  fill: #101820;
+}
+
+.react-flow__controls,
+.react-flow__minimap {
+  border: 1px solid #334351;
+  background: #151c23;
+}
+
+.react-flow__controls-button {
+  border-bottom-color: #334351;
+  background: #151c23;
+  color: #e7edf4;
 }
 
 .diagnostics {
@@ -249,6 +402,10 @@ p {
   .two-column {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .risk-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -258,7 +415,16 @@ p {
   }
 
   .summary-grid,
-  .two-column {
+  .two-column,
+  .risk-grid {
     grid-template-columns: 1fr;
+  }
+
+  .graph-card-header {
+    display: block;
+  }
+
+  .graph-card-header span {
+    margin-top: 8px;
   }
 }

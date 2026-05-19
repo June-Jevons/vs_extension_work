@@ -170,4 +170,4 @@ Export writes JSON only after the user explicitly chooses a save path in the Sav
 - The scanner uses textual Python import parsing and does not execute target Python code.
 - Workspace compile, style, and test checks are reported as not run or unknown unless a future command explicitly wires them.
 - Full installed-VSIX UI validation may still require human inspection because VS Code desktop Activity Bar, Status Bar, and text-selection behavior are not fully observable from command-line automation.
-- The live VS Code dashboard now loads the Vite-built React webview shell. Standalone visual snapshots still use the legacy renderer until the full dashboard and graph migration pass moves them to React, React Flow, and ELK.
+- The live VS Code dashboard and standalone visual snapshots now load the Vite-built React webview. Graph panels use React Flow with ELK layout.

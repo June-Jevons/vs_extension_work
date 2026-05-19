@@ -1,71 +1,110 @@
+import * as fs from "fs";
+import * as path from "path";
 import { DashboardState } from "./dashboardState";
-import { renderDashboardShell } from "./renderers";
-import { dashboardStyles } from "./styles";
+import { findViteEntry } from "./webviewAssets";
+
+const WEBVIEW_MANIFEST_PATH = path.resolve(process.cwd(), "media", "webview", ".vite", "manifest.json");
 
 export function renderStandaloneDashboardHtml(state: DashboardState): string {
+  const assets = readStandaloneAssets();
+  if (!assets) {
+    return renderStandaloneErrorHtml("React webview bundle is unavailable.", "Run npm run compile:webview before rendering visual snapshots.");
+  }
+
+  const styles = assets.css
+    .map((href) => `  <link rel="stylesheet" href="${escapeAttribute(href)}">`)
+    .join("\n");
+  const serializedState = JSON.stringify(state).replace(/</g, "\\u003c");
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data:; style-src 'self' 'unsafe-inline' file:; script-src 'self' 'unsafe-inline' file:; img-src 'self' data: file:; font-src 'self' file:;">
   <title>Live Architecture Map - ${state.mode}</title>
-  <style>${dashboardStyles}</style>
+${styles}
 </head>
 <body>
-  ${renderDashboardShell(state)}
+  <div id="root">Loading Live Architecture Map...</div>
   <script>
-    document.addEventListener("click", (event) => {
-      const control = event.target.closest("[data-graph-action]");
-      if (!control) {
-        return;
-      }
-      const panel = control.closest("[data-graph-panel]");
-      const svg = panel ? panel.querySelector("svg.graph-svg") : undefined;
-      if (!svg) {
-        return;
-      }
-      const fitViewBox = svg.getAttribute("data-fit-viewbox") || svg.getAttribute("viewBox");
-      const current = parseViewBox(svg.getAttribute("viewBox") || fitViewBox);
-      if (!current || !fitViewBox) {
-        return;
-      }
-      const action = control.getAttribute("data-graph-action");
-      if (action === "reset") {
-        svg.setAttribute("viewBox", fitViewBox);
-        svg.dataset.zoom = "1";
-        return;
-      }
-      const factor = action === "zoom-in" ? 0.8 : action === "zoom-out" ? 1.25 : 1;
-      const width = current.width * factor;
-      const height = current.height * factor;
-      const centerX = current.x + current.width / 2;
-      const centerY = current.y + current.height / 2;
-      svg.setAttribute("viewBox", [
-        (centerX - width / 2).toFixed(2),
-        (centerY - height / 2).toFixed(2),
-        width.toFixed(2),
-        height.toFixed(2)
-      ].join(" "));
-      svg.dataset.zoom = String(Number(svg.dataset.zoom || "1") / factor);
-    });
-
-    function parseViewBox(value) {
-      if (!value) {
-        return undefined;
-      }
-      const parts = value.trim().split(/\\s+/).map(Number);
-      if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
-        return undefined;
-      }
+    window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__ = ${serializedState};
+    window.acquireVsCodeApi = function () {
       return {
-        x: parts[0],
-        y: parts[1],
-        width: parts[2],
-        height: parts[3]
+        postMessage: function (message) {
+          if (!message || typeof message.type !== "string") {
+            return;
+          }
+          if (message.type === "setMode") {
+            window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__ = {
+              ...window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__,
+              mode: message.mode
+            };
+            window.postMessage({ type: "state", state: window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__ }, "*");
+          }
+          if (message.type === "selectFeature") {
+            window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__ = {
+              ...window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__,
+              mode: "featureFocus",
+              selectedFeatureId: message.featureId
+            };
+            window.postMessage({ type: "state", state: window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__ }, "*");
+          }
+        },
+        getState: function () {
+          return window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__;
+        },
+        setState: function (state) {
+          window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__ = state;
+        }
       };
-    }
+    };
   </script>
+  <script type="module" src="${escapeAttribute(assets.script)}"></script>
 </body>
 </html>`;
+}
+
+function readStandaloneAssets(): { script: string; css: string[] } | undefined {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(WEBVIEW_MANIFEST_PATH, "utf8")) as Parameters<typeof findViteEntry>[0];
+    const entry = findViteEntry(manifest);
+    if (!entry?.file) {
+      return undefined;
+    }
+    return {
+      script: `../../media/webview/${entry.file}`,
+      css: (entry.css ?? []).map((cssFile) => `../../media/webview/${cssFile}`)
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function renderStandaloneErrorHtml(message: string, detail: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Architecture Map</title>
+</head>
+<body>
+  <main data-testid="webview-bundle-error">
+    <h1>${escapeHtml(message)}</h1>
+    <p>${escapeHtml(detail)}</p>
+  </main>
+</body>
+</html>`;
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value).replace(/"/g, "&quot;");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }

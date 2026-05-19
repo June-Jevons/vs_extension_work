@@ -28,3 +28,4 @@ playwright.config.ts
 tsconfig.json
 tsconfig.scripts.json
 tsconfig.test.json
+tsconfig.webview.json

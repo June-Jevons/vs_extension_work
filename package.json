@@ -155,7 +155,7 @@
   },
   "scripts": {
     "compile:extension": "tsc -p ./",
-    "compile:webview": "vite build --config ./webview.vite.config.ts",
+    "compile:webview": "tsc -p ./tsconfig.webview.json && vite build --config ./webview.vite.config.ts",
     "compile": "npm run compile:extension && npm run compile:webview",
     "watch:extension": "tsc -watch -p ./",
     "watch:webview": "vite build --watch --config ./webview.vite.config.ts",

@@ -6,6 +6,8 @@ import {
   getModeLabel
 } from "../webview/dashboardState";
 import { ExtensionToWebviewMessage, isExtensionToWebviewMessage } from "../webview/messageProtocol";
+import { buildGraphViewForTarget } from "../webview/graphViewModel";
+import { GraphCanvas } from "./GraphCanvas";
 import { postToExtension } from "./vscodeApi";
 
 type ViewStatus =
@@ -13,10 +15,21 @@ type ViewStatus =
   | { type: "error"; message: string }
   | { type: "ready"; state: DashboardState };
 
+declare global {
+  interface Window {
+    __LIVE_ARCHITECTURE_MAP_INITIAL_STATE__?: DashboardState;
+  }
+}
+
 export function App(): React.JSX.Element {
-  const [status, setStatus] = useState<ViewStatus>({
-    type: "loading",
-    message: "Waiting for dashboard state..."
+  const [status, setStatus] = useState<ViewStatus>(() => {
+    const initialState = window.__LIVE_ARCHITECTURE_MAP_INITIAL_STATE__;
+    return initialState
+      ? { type: "ready", state: initialState }
+      : {
+        type: "loading",
+        message: "Waiting for dashboard state..."
+      };
   });
 
   useEffect(() => {
@@ -60,7 +73,7 @@ export function App(): React.JSX.Element {
 
   if (status.type === "error") {
     return (
-      <main className="dashboard-shell dashboard-center" data-testid="react-dashboard-root">
+      <main className="dashboard-shell dashboard-center" data-testid="dashboard-root">
         <section className="empty-state" data-testid="react-dashboard-error">
           <p className="eyebrow">Live Architecture Map</p>
           <h1>Dashboard unavailable</h1>
@@ -72,7 +85,7 @@ export function App(): React.JSX.Element {
 
   if (status.type === "loading") {
     return (
-      <main className="dashboard-shell dashboard-center" data-testid="react-dashboard-root">
+      <main className="dashboard-shell dashboard-center" data-testid="dashboard-root">
         <section className="empty-state" data-testid="react-dashboard-loading">
           <p className="eyebrow">Live Architecture Map</p>
           <h1>Loading dashboard</h1>
@@ -92,7 +105,7 @@ function Dashboard({ state }: { state: DashboardState }): React.JSX.Element {
   );
 
   return (
-    <main className="dashboard-shell" data-testid="react-dashboard-root">
+    <main className="dashboard-shell" data-testid="dashboard-root">
       <header className="topbar">
         <div>
           <p className="eyebrow">Live Architecture Map</p>
@@ -162,6 +175,10 @@ function Dashboard({ state }: { state: DashboardState }): React.JSX.Element {
 }
 
 function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
+  const risksByLevel = new Map(state.snapshot.risks.map((risk) => [risk.level, risk]));
+  const impactView = useMemo(() => buildGraphViewForTarget(state, "liveImpact"), [state]);
+  const dependencyView = useMemo(() => buildGraphViewForTarget(state, "liveDependency"), [state]);
+
   return (
     <div className="two-column">
       <section data-testid="current-change-area">
@@ -173,6 +190,18 @@ function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
           ))}
         </ul>
       </section>
+      <div className="risk-grid" aria-label="Risk summary">
+        {(["high", "medium", "low"] as const).map((level) => {
+          const risk = risksByLevel.get(level);
+          return (
+            <section className={`risk-card risk-${level}`} data-testid={`risk-card-${level}`} key={level}>
+              <h2>{level}</h2>
+              <strong>{risk?.count ?? 0}</strong>
+              <p>{risk?.detail ?? "No current risk items."}</p>
+            </section>
+          );
+        })}
+      </div>
       <section data-testid="changed-files-table">
         <h2>Changed Files</h2>
         <ul className="plain-list">
@@ -181,16 +210,26 @@ function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
           ))}
         </ul>
       </section>
-      <GraphPlaceholder testId="architecture-impact-graph" title="Architecture Impact Graph" />
-      <GraphPlaceholder testId="dependency-graph" title="Dependency Graph" />
+      <section data-testid="validation-status-row">
+        <h2>Validation Status</h2>
+        <ul className="plain-list">
+          {state.snapshot.validations.slice(0, 6).map((validation) => (
+            <li key={validation.id}>{validation.label}: {validation.state}</li>
+          ))}
+        </ul>
+      </section>
+      <GraphCanvas testId="architecture-impact-graph" view={impactView} />
+      <GraphCanvas testId="dependency-graph" view={dependencyView} />
     </div>
   );
 }
 
 function WholeArchitecture({ state }: { state: DashboardState }): React.JSX.Element {
+  const graphView = useMemo(() => buildGraphViewForTarget(state, "wholeArchitecture"), [state]);
+
   return (
     <div className="two-column">
-      <GraphPlaceholder testId="whole-architecture-diagram" title="Whole Architecture" />
+      <GraphCanvas testId="whole-architecture-diagram" view={graphView} />
       <section data-testid="architecture-overview-cards">
         <h2>Feature Blocks</h2>
         <ul className="plain-list">
@@ -212,6 +251,10 @@ function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activ
   const modules = activeFeature
     ? state.snapshot.modules.filter((moduleNode) => activeFeature.moduleIds.includes(moduleNode.id))
     : [];
+  const graphView = useMemo(
+    () => buildGraphViewForTarget(state, "featureInternal", activeFeature?.id),
+    [activeFeature?.id, state]
+  );
 
   return (
     <div className="two-column">
@@ -236,7 +279,7 @@ function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activ
           ))}
         </ul>
       </section>
-      <GraphPlaceholder testId="internal-dependency-graph" title="Internal Dependency Graph" />
+      <GraphCanvas testId="internal-dependency-graph" view={graphView} />
       <section data-testid="related-external-dependencies">
         <h2>Related External Dependencies</h2>
         <p>{state.snapshot.dependencies.length} workspace dependency edges are available.</p>
@@ -254,6 +297,8 @@ function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activ
 }
 
 function DiffSinceBaseline({ state }: { state: DashboardState }): React.JSX.Element {
+  const graphView = useMemo(() => buildGraphViewForTarget(state, "baselineDiff"), [state]);
+
   return (
     <div className="two-column">
       <section data-testid="baseline-selector">
@@ -264,7 +309,7 @@ function DiffSinceBaseline({ state }: { state: DashboardState }): React.JSX.Elem
         <h2>Summary</h2>
         <p>{state.baselineDiff?.changedModules.length ?? 0} changed modules since baseline.</p>
       </section>
-      <GraphPlaceholder testId="before-after-graph" title="Before After Graph" />
+      <GraphCanvas testId="before-after-graph" view={graphView} />
       <section data-testid="top-changes-table">
         <h2>Top Changes</h2>
         <ul className="plain-list">
@@ -296,17 +341,6 @@ function Diagnostic({ label, value }: { label: string; value: string | number })
       <dt>{label}</dt>
       <dd>{value}</dd>
     </>
-  );
-}
-
-function GraphPlaceholder({ testId, title }: { testId: string; title: string }): React.JSX.Element {
-  return (
-    <section className="graph-placeholder" data-testid={testId}>
-      <h2>{title}</h2>
-      <div className="graph-surface" data-testid="react-flow-placeholder">
-        <span>React Flow canvas migration pending</span>
-      </div>
-    </section>
   );
 }
 

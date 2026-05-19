@@ -12,7 +12,7 @@ export function getDashboardWebviewHtml(
     `img-src ${webview.cspSource} data:`,
     `font-src ${webview.cspSource}`,
     `style-src ${webview.cspSource} 'nonce-${nonce}'`,
-    `script-src 'nonce-${nonce}'`
+    `script-src ${webview.cspSource} 'nonce-${nonce}'`
   ].join("; ");
 
   if (assets.kind === "missing") {
