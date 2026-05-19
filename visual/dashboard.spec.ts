@@ -122,6 +122,7 @@ for (const target of visualTargets) {
     const graphCanvases = page.getByTestId("react-flow-canvas");
     const graphCount = await graphCanvases.count();
     expect(graphCount, "React Flow canvases should be rendered").toBeGreaterThan(0);
+    await expect(page.getByTestId("graph-layout-mode"), "Each graph should expose a layout selector").toHaveCount(graphCount);
     for (let index = 0; index < graphCount; index += 1) {
       const canvas = graphCanvases.nth(index);
       await expect(canvas.locator(".react-flow__viewport"), `React Flow viewport ${index} should be visible`).toBeVisible();

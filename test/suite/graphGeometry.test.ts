@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { createMockDashboardState } from "../../src/mockData/mockDashboardState";
-import { layoutGraphWithElk } from "../../src/webview/elkLayout";
+import { getAvailableGraphLayoutModeOptions, layoutGraphWithElk } from "../../src/webview/elkLayout";
 import { buildGraphViewForTarget, GraphViewModel, GraphViewNode } from "../../src/webview/graphViewModel";
 
 void run()
@@ -14,7 +14,14 @@ void run()
 
 async function run(): Promise<void> {
   const view = buildGraphViewForTarget(createMockDashboardState("wholeArchitecture"), "wholeArchitecture");
-  const layout = await layoutGraphWithElk(view);
+  const layoutModes = getAvailableGraphLayoutModeOptions(view).map((option) => option.id);
+  assert.deepStrictEqual(
+    layoutModes,
+    ["layerColumns", "layerRows", "dependencyFlow", "topDown", "compact"],
+    "whole architecture should expose multiple layout choices"
+  );
+
+  const layout = await layoutGraphWithElk(view, "layerColumns");
 
   for (const node of layout.nodes) {
     assert.ok(Number.isFinite(node.x), `node ${node.id} should have finite x`);
@@ -22,6 +29,15 @@ async function run(): Promise<void> {
   }
   assertNoNodeOverlap(layout);
   assertWholeArchitectureLayerColumns(layout);
+  const rowLayout = await layoutGraphWithElk(view, "layerRows");
+  assertNoNodeOverlap(rowLayout);
+  assertWholeArchitectureLayerRows(rowLayout);
+
+  for (const layoutMode of ["dependencyFlow", "topDown", "compact"] as const) {
+    const elkLayout = await layoutGraphWithElk(view, layoutMode);
+    assertNoNodeOverlap(elkLayout);
+  }
+
   assert.strictEqual(
     edgeSegmentCrossesUnrelatedNode(
       { id: "source", label: "Source", detail: "", kind: "module", width: 40, height: 40, x: 0, y: 20 },
@@ -35,8 +51,35 @@ async function run(): Promise<void> {
 
 function assertWholeArchitectureLayerColumns(view: GraphViewModel): void {
   const nodesById = new Map(view.nodes.map((node) => [node.id, node]));
+  const layerNodes = view.nodes.filter((node) => node.kind === "layer").sort((left, right) => (left.x ?? 0) - (right.x ?? 0));
+  assert.ok(layerNodes.length > 0, "whole architecture should expose layer columns");
+
+  for (let index = 1; index < layerNodes.length; index += 1) {
+    const previous = layerNodes[index - 1]!;
+    const current = layerNodes[index]!;
+    assert.ok((current.x ?? 0) > (previous.x ?? 0) + previous.width, `layer ${current.id} should be to the right of ${previous.id}`);
+  }
+
+  for (const edge of view.edges.filter((candidate) => candidate.semanticKind === "contains")) {
+    const source = nodesById.get(edge.source);
+    const target = nodesById.get(edge.target);
+    if (!source || !target) {
+      continue;
+    }
+    if (source.kind === "layer" && target.kind === "feature") {
+      assert.ok((target.y ?? 0) > (source.y ?? 0) + source.height, `feature ${target.id} should sit below layer ${source.id}`);
+      assert.ok(Math.abs(center(target).x - center(source).x) < 120, `feature ${target.id} should stay in layer column ${source.id}`);
+    }
+    if (source.kind === "feature" && target.kind !== "feature") {
+      assert.ok((target.y ?? 0) > (source.y ?? 0) + source.height, `role ${target.id} should sit below feature ${source.id}`);
+    }
+  }
+}
+
+function assertWholeArchitectureLayerRows(view: GraphViewModel): void {
+  const nodesById = new Map(view.nodes.map((node) => [node.id, node]));
   const layerNodes = view.nodes.filter((node) => node.kind === "layer").sort((left, right) => (left.y ?? 0) - (right.y ?? 0));
-  assert.ok(layerNodes.length > 0, "whole architecture should expose layer lanes");
+  assert.ok(layerNodes.length > 0, "whole architecture should expose layer rows");
 
   for (let index = 1; index < layerNodes.length; index += 1) {
     const previous = layerNodes[index - 1]!;

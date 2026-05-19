@@ -233,11 +233,40 @@ p {
   margin-bottom: 12px;
 }
 
+.graph-card-title {
+  min-width: 0;
+}
+
 .graph-card-header p {
   margin: 6px 0 0;
 }
 
-.graph-card-header span {
+.graph-card-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.graph-layout-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #9fb1c2;
+  font-size: 12px;
+}
+
+.graph-layout-control select {
+  width: auto;
+  min-width: 168px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.graph-stat-pill {
   flex: none;
   min-height: 28px;
   display: inline-flex;
@@ -675,7 +704,24 @@ p {
     display: block;
   }
 
-  .graph-card-header span {
+  .graph-card-actions {
+    margin-top: 8px;
+    justify-content: flex-start;
+  }
+
+  .graph-layout-control {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .graph-layout-control select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .graph-stat-pill {
     margin-top: 8px;
   }
 }

@@ -12,7 +12,12 @@ import {
   ReactFlow,
   ReactFlowProvider
 } from "@xyflow/react";
-import { layoutGraphWithElk } from "../webview/elkLayout";
+import {
+  getAvailableGraphLayoutModeOptions,
+  getDefaultGraphLayoutMode,
+  GraphLayoutMode,
+  layoutGraphWithElk
+} from "../webview/elkLayout";
 import { GraphNodeKind, GraphSemanticEdgeKind, GraphViewEdge, GraphViewModel, GraphViewNode } from "../webview/graphViewModel";
 import { getCachedLayout, storeCachedLayout } from "./layoutCache";
 
@@ -48,29 +53,55 @@ const nodeTypes = {
 };
 
 export function GraphCanvas({ view, testId }: GraphCanvasProps): React.JSX.Element {
+  const layoutOptions = useMemo(() => getAvailableGraphLayoutModeOptions(view), [view]);
+  const defaultLayoutMode = useMemo(() => getDefaultGraphLayoutMode(view), [view]);
+  const [layoutMode, setLayoutMode] = useState<GraphLayoutMode>(defaultLayoutMode);
+  const effectiveLayoutMode = layoutOptions.some((option) => option.id === layoutMode) ? layoutMode : defaultLayoutMode;
+
+  useEffect(() => {
+    setLayoutMode((current) => layoutOptions.some((option) => option.id === current) ? current : defaultLayoutMode);
+  }, [defaultLayoutMode, layoutOptions]);
+
   return (
     <section className="graph-card" data-testid={testId}>
       <div className="graph-card-header">
-        <div>
+        <div className="graph-card-title">
           <h2>{view.title}</h2>
           <p>{view.description}</p>
         </div>
-        <span>{view.nodes.length} nodes / {view.edges.length} edges</span>
+        <div className="graph-card-actions">
+          <label className="graph-layout-control">
+            <span className="graph-layout-label">Layout</span>
+            <select
+              aria-label={`${view.title} layout`}
+              data-testid="graph-layout-mode"
+              value={effectiveLayoutMode}
+              onChange={(event) => setLayoutMode(event.target.value as GraphLayoutMode)}
+            >
+              {layoutOptions.map((option) => (
+                <option key={option.id} value={option.id} title={option.detail}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="graph-stat-pill">{view.nodes.length} nodes / {view.edges.length} edges</span>
+        </div>
       </div>
       <ReactFlowProvider>
-        <LaidOutGraph view={view} />
+        <LaidOutGraph view={view} layoutMode={effectiveLayoutMode} />
       </ReactFlowProvider>
     </section>
   );
 }
 
-function LaidOutGraph({ view }: { view: GraphViewModel }): React.JSX.Element {
-  const [layout, setLayout] = useState<GraphViewModel | undefined>(() => getCachedLayout(view));
+function LaidOutGraph({ view, layoutMode }: { view: GraphViewModel; layoutMode: GraphLayoutMode }): React.JSX.Element {
+  const [layout, setLayout] = useState<GraphViewModel | undefined>(() => getCachedLayout(view, layoutMode));
   const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
-    const cached = getCachedLayout(view);
+    const cached = getCachedLayout(view, layoutMode);
     if (cached) {
       setLayout(cached);
       setError(undefined);
@@ -79,12 +110,12 @@ function LaidOutGraph({ view }: { view: GraphViewModel }): React.JSX.Element {
 
     setLayout(undefined);
     setError(undefined);
-    void layoutGraphWithElk(view)
+    void layoutGraphWithElk(view, layoutMode)
       .then((result) => {
         if (cancelled) {
           return;
         }
-        storeCachedLayout(result);
+        storeCachedLayout(result, layoutMode);
         setLayout(result);
       })
       .catch((reason: unknown) => {
@@ -97,7 +128,7 @@ function LaidOutGraph({ view }: { view: GraphViewModel }): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [view]);
+  }, [view, layoutMode]);
 
   const nodes = useMemo(() => layout ? toFlowNodes(layout) : [], [layout]);
   const edges = useMemo(() => layout ? toFlowEdges(layout) : [], [layout]);
