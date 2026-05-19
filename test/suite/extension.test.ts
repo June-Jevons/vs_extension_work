@@ -205,8 +205,8 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
     selectedFeatureId,
     diagnostics: {
       rootUri: "file:///real-fixture",
-      workspaceFsPath: "C:\\real-fixture",
-      pathKind: "local",
+      workspaceFsPath: "/tmp/real-fixture",
+      pathKind: "linux-native",
       stateSource: "real",
       pythonFileCount: modules.length,
       moduleCount: modules.length,

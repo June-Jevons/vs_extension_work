@@ -4,7 +4,6 @@
 
 This file is the single source of truth for migrating **Live Architecture Map** to the long-term React webview architecture on **native Ubuntu 22.04**, while improving analysis performance, removing fallback-based behavior, fixing F5/debug configuration, and making the development environment reproducible.
 
-This v8 plan supersedes `react_plan_v1.md`, `react_plan_v2.md`, `react_plan_v3.md`, `react_plan_v4.md`, `react_plan_v5.md`, `react_plan_v6.md`, and `react_plan_v7.md` for implementation.
 
 Use this file only unless the user explicitly asks otherwise.
 

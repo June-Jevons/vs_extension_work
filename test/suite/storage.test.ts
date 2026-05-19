@@ -3,23 +3,23 @@ import { createWorkspaceKey, isExtensionManagedStoragePath, normalizeWorkspaceRo
 
 const first = createWorkspaceKey({
   name: "ABB_ROS2",
-  rootUri: "file://wsl.localhost/Ubuntu-22.04/home/jevons/ABB_ROS2"
+  rootUri: "file:///home/jevons/ABB_ROS2"
 });
 const second = createWorkspaceKey({
   name: "ABB_ROS2",
-  rootUri: "file://wsl.localhost/Ubuntu-22.04/home/jevons/ABB_ROS2/"
+  rootUri: "file:///home/jevons/ABB_ROS2/"
 });
 
 assert.strictEqual(first, second);
 assert.ok(first.startsWith("workspace:"));
 
-const workspace = "\\\\wsl.localhost\\Ubuntu-22.04\\home\\jevons\\ABB_ROS2";
+const workspace = "/home/jevons/ABB_ROS2";
 assert.strictEqual(
-  isExtensionManagedStoragePath("C:\\Users\\Junekim\\AppData\\Roaming\\Code\\User\\globalStorage\\local-tools.live-architecture-map", workspace),
+  isExtensionManagedStoragePath("/home/jevons/.config/Code/User/globalStorage/local-tools.live-architecture-map", workspace),
   true
 );
 assert.strictEqual(
-  isExtensionManagedStoragePath("\\\\wsl.localhost\\Ubuntu-22.04\\home\\jevons\\ABB_ROS2\\.vscode", workspace),
+  isExtensionManagedStoragePath("/home/jevons/ABB_ROS2/.vscode", workspace),
   false
 );
-assert.strictEqual(normalizeWorkspaceRoot("C:\\Temp\\Lam\\"), "c:/temp/lam");
+assert.strictEqual(normalizeWorkspaceRoot("/home/jevons/ABB_ROS2/"), "/home/jevons/abb_ros2");

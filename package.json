@@ -14,7 +14,9 @@
     "Other"
   ],
   "engines": {
-    "vscode": "^1.120.0"
+    "vscode": "^1.119.0",
+    "node": ">=20",
+    "npm": ">=10"
   },
   "main": "./out/extension.js",
   "activationEvents": [
@@ -159,6 +161,7 @@
     "visual:render": "npm run compile && tsc -p ./tsconfig.scripts.json && node ./out-scripts/scripts/render-ui-snapshots.js",
     "visual:test": "playwright test",
     "test:vscode": "npm run compile && tsc -p ./tsconfig.test.json && vscode-test --config ./.vscode-test.mjs",
+    "doctor:ubuntu": "tsc -p ./tsconfig.scripts.json && node ./out-scripts/scripts/doctor-ubuntu.js",
     "validate": "npm run compile && npm run test:unit && npm run visual:render && npm run visual:test",
     "package": "vsce package"
   },
@@ -166,7 +169,7 @@
     "@playwright/test": "1.60.0",
     "@types/node": "24.12.4",
     "@types/vscode": "1.120.0",
-    "@vscode/test-cli": "0.0.12",
+    "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "2.5.2",
     "@vscode/vsce": "3.9.1",
     "typescript": "6.0.3"

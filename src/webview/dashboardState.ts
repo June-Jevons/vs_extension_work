@@ -45,7 +45,7 @@ export type ScannerStatus =
 export interface WorkspaceDiagnostics {
   rootUri: string;
   workspaceFsPath?: string;
-  pathKind: "unc-wsl" | "unc" | "local" | "unknown";
+  pathKind: "linux-native" | "unc-wsl" | "unc" | "windows-local" | "unknown";
   stateSource: "real" | "mock";
   fallbackReason?: string;
   pythonFileCount: number;

@@ -368,7 +368,7 @@ export function createMockDashboardState(
     diagnostics: {
       rootUri: snapshot.rootUri,
       workspaceFsPath: "C:\\Users\\Junekim\\Work\\ABB_ROS2",
-      pathKind: "local",
+      pathKind: "linux-native",
       stateSource: "mock",
       fallbackReason: "Bundled sample data is active.",
       pythonFileCount: snapshot.health.totalPythonFiles,

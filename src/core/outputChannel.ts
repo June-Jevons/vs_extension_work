@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+export { describePathKind, PathKind } from "./pathKind";
 
 const CHANNEL_NAME = "Live Architecture Map";
 
@@ -11,21 +12,6 @@ export function getLiveArchitectureOutputChannel(): vscode.OutputChannel {
 
 export function logInfo(message: string): void {
   getLiveArchitectureOutputChannel().appendLine(`[${new Date().toISOString()}] ${message}`);
-}
-
-export function describePathKind(fsPath: string | undefined): "unc-wsl" | "unc" | "local" | "unknown" {
-  if (!fsPath) {
-    return "unknown";
-  }
-
-  const normalized = fsPath.replaceAll("/", "\\").toLowerCase();
-  if (normalized.startsWith("\\\\wsl.localhost\\") || normalized.startsWith("\\\\wsl$\\")) {
-    return "unc-wsl";
-  }
-  if (normalized.startsWith("\\\\")) {
-    return "unc";
-  }
-  return "local";
 }
 
 export function disposeLiveArchitectureOutputChannel(): void {

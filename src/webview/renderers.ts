@@ -2292,8 +2292,10 @@ function formatPathKind(value: DashboardState["diagnostics"]["pathKind"]): strin
       return "UNC WSL";
     case "unc":
       return "UNC";
-    case "local":
-      return "Local";
+    case "linux-native":
+      return "Linux native";
+    case "windows-local":
+      return "Windows local";
     case "unknown":
       return "Unknown";
   }
