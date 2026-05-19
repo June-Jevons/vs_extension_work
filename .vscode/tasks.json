@@ -3,14 +3,14 @@
   "tasks": [
     {
       "label": "LAM: ensure deps and compile",
-      "type": "shell",
-      "command": "powershell",
+      "type": "process",
+      "command": "powershell.exe",
       "args": [
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        "if (!(Test-Path -LiteralPath '.\\node_modules\\.bin\\tsc.cmd')) { npm ci; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }; npm run compile"
+        "if (-not (Test-Path -LiteralPath '.\\node_modules\\.bin\\tsc.cmd')) { npm ci; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }; npm run compile"
       ],
       "options": {
         "cwd": "${workspaceFolder}"

@@ -41,6 +41,25 @@ interface PositionedEdge {
   count?: number;
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Rect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+type AnchorSide = "left" | "right" | "top" | "bottom";
+
+interface RoutedEdge {
+  d: string;
+  labelPoint: Point;
+}
+
 interface GraphData {
   nodes: PositionedNode[];
   edges: PositionedEdge[];
@@ -71,15 +90,14 @@ export function renderTopToolbar(state: DashboardState): string {
     <header class="dashboard-toolbar">
       <div class="toolbar-title">
         <h1>Live Architecture Map</h1>
-        <p>${renderTopSubtitle(state)}</p>
       </div>
       <div class="toolbar-controls">
         <div class="control-group mode-group">
-          <span class="control-group-label">Modes</span>
+          <span class="control-group-label">Mode</span>
           ${renderModeTabs(state)}
         </div>
         <div class="control-group action-group">
-          <span class="control-group-label">Actions</span>
+          <span class="control-group-label">Action</span>
           <div class="toolbar-actions" aria-label="Dashboard actions">
             <button class="toolbar-button" type="button" data-command="refresh" title="Refresh dashboard">Refresh</button>
             <button class="toolbar-button" type="button" data-command="exportSnapshot" title="Export snapshot">Export</button>
@@ -157,21 +175,6 @@ export function renderModeTabs(state: DashboardState): string {
       ${dashboardModes.map((mode) => renderModeTab(mode, state.mode)).join("")}
     </nav>
   `;
-}
-
-function renderTopSubtitle(state: DashboardState): string {
-  const status = state.error
-    ? "Analysis error"
-    : state.isLoading
-      ? "Loading workspace data"
-      : state.isMockData
-        ? "Mock data"
-        : "Live workspace data";
-  return [
-    state.workspace.name,
-    getModeLabel(state.mode),
-    status
-  ].map(escapeHtml).join(" · ");
 }
 
 export function renderLiveChangesMode(state: DashboardState): string {
@@ -597,7 +600,7 @@ export function renderDiffSinceBaselineMode(state: DashboardState): string {
                   <p class="panel-subtitle">Largest dependency shifts since baseline.</p>
                 </div>
               </div>
-              <div class="panel-body table-wrap">
+              <div class="panel-body table-wrap top-changes-scroll">
                 ${renderTopChangesTable(state)}
               </div>
             </section>
@@ -821,18 +824,12 @@ function renderFeatureGraph(graph: GraphData, state: DashboardState, ariaLabel: 
     if (!from || !to) {
       return "";
     }
-    const fromX = from.x + (from.width ?? 0);
-    const fromY = from.y + (from.height ?? 0) / 2;
-    const toX = to.x;
-    const toY = to.y + (to.height ?? 0) / 2;
-    const offset = ((index % 5) - 2) * 12;
-    const midX = Math.round((fromX + toX) / 2);
-    const midY = Math.round((fromY + toY) / 2) + offset;
+    const route = routeFeatureEdge(from, to, graph.nodes, index);
     const label = edge.count
-      ? `<text x="${midX - 7}" y="${midY - 7}" class="edge-label">${edge.count}</text>`
+      ? `<text x="${route.labelPoint.x + 5}" y="${route.labelPoint.y - 5}" class="edge-label">${edge.count}</text>`
       : "";
     return `
-      <path class="edge-line${edge.kind === "test" ? " dashed" : ""}" d="M${fromX} ${fromY} C${midX + offset} ${fromY}, ${midX - offset} ${toY}, ${toX} ${toY}" />
+      <path class="edge-line${edge.kind === "test" ? " dashed" : ""}" d="${route.d}" />
       ${label}
     `;
   }).join("");
@@ -843,6 +840,429 @@ function renderFeatureGraph(graph: GraphData, state: DashboardState, ariaLabel: 
   }).join("");
 
   return renderGraphStage(graph, ariaLabel, edgeMarkup, nodeMarkup);
+}
+
+function routeFeatureEdge(from: PositionedNode, to: PositionedNode, nodes: PositionedNode[], index: number): RoutedEdge {
+  const candidates = getAnchorCandidates(from, to);
+  const laneOffset = ((index % 5) - 2) * 7;
+  let bestRoute: Point[] | undefined;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  candidates.forEach((candidate, candidateIndex) => {
+    const start = getAnchorPoint(from, candidate.from, laneOffset);
+    const end = getAnchorPoint(to, candidate.to, -laneOffset);
+    const startOut = moveAwayFromNode(start, candidate.from, 14);
+    const endOut = moveAwayFromNode(end, candidate.to, 14);
+    const routedMiddle = routeOrthogonalPoints(startOut, endOut, nodes);
+    const route = simplifyPoints([start, ...routedMiddle, end]);
+    const collisionPenalty = routeCrossesNodeInterior(route, nodes) ? 1_000_000 : 0;
+    const score = routeLength(route) + bendCount(route) * 38 + candidateIndex * 18 + collisionPenalty;
+    if (score < bestScore) {
+      bestScore = score;
+      bestRoute = route;
+    }
+  });
+
+  const points = bestRoute ?? directFallbackRoute(from, to);
+  return {
+    d: pointsToPath(points),
+    labelPoint: getPathLabelPoint(points)
+  };
+}
+
+function getAnchorCandidates(from: PositionedNode, to: PositionedNode): Array<{ from: AnchorSide; to: AnchorSide }> {
+  const fromRect = getNodeRect(from);
+  const toRect = getNodeRect(to);
+  const fromCenter = getRectCenter(fromRect);
+  const toCenter = getRectCenter(toRect);
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+  const horizontal: { from: AnchorSide; to: AnchorSide } = dx >= 0
+    ? { from: "right", to: "left" }
+    : { from: "left", to: "right" };
+  const vertical: { from: AnchorSide; to: AnchorSide } = dy >= 0
+    ? { from: "bottom", to: "top" }
+    : { from: "top", to: "bottom" };
+  const alternates: Array<{ from: AnchorSide; to: AnchorSide }> = [
+    horizontal,
+    vertical,
+    { from: horizontal.from, to: vertical.to },
+    { from: vertical.from, to: horizontal.to },
+    { from: dx >= 0 ? "left" : "right", to: dx >= 0 ? "right" : "left" },
+    { from: dy >= 0 ? "top" : "bottom", to: dy >= 0 ? "bottom" : "top" }
+  ];
+  const ordered = Math.abs(dx) >= Math.abs(dy) ? alternates : [vertical, horizontal, ...alternates.slice(2)];
+  const seen = new Set<string>();
+  return ordered.filter((candidate) => {
+    const key = `${candidate.from}->${candidate.to}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function routeOrthogonalPoints(start: Point, end: Point, nodes: PositionedNode[]): Point[] {
+  const obstacles = nodes.map((node) => expandRect(getNodeRect(node), 10));
+  const bounds = getRoutingBounds(nodes, start, end);
+  const xValues = sortedUniqueNumbers([
+    start.x,
+    end.x,
+    bounds.left,
+    bounds.right,
+    ...obstacles.flatMap((rect) => [rect.left, rect.right])
+  ]);
+  const yValues = sortedUniqueNumbers([
+    start.y,
+    end.y,
+    bounds.top,
+    bounds.bottom,
+    ...obstacles.flatMap((rect) => [rect.top, rect.bottom])
+  ]);
+  const xIndexByValue = new Map(xValues.map((value, index) => [value, index]));
+  const yIndexByValue = new Map(yValues.map((value, index) => [value, index]));
+  const pointsByKey = new Map<string, Point>();
+  const available = new Set<string>();
+
+  for (const x of xValues) {
+    for (const y of yValues) {
+      const point = { x, y };
+      const key = pointKey(point);
+      pointsByKey.set(key, point);
+      if (!isPointInsideAnyRect(point, obstacles) || samePoint(point, start) || samePoint(point, end)) {
+        available.add(key);
+      }
+    }
+  }
+
+  const startKey = pointKey(start);
+  const endKey = pointKey(end);
+  available.add(startKey);
+  available.add(endKey);
+
+  const distance = new Map<string, number>([[startKey, 0]]);
+  const previous = new Map<string, string>();
+  const open = new Set<string>([startKey]);
+  const visited = new Set<string>();
+
+  while (open.size > 0) {
+    const currentKey = getLowestDistanceKey(open, distance);
+    if (!currentKey || currentKey === endKey) {
+      break;
+    }
+    open.delete(currentKey);
+    visited.add(currentKey);
+    const current = pointsByKey.get(currentKey);
+    if (!current) {
+      continue;
+    }
+
+    for (const neighbor of getRouteNeighbors(current, xValues, yValues, xIndexByValue, yIndexByValue, available, pointsByKey)) {
+      const neighborKey = pointKey(neighbor);
+      if (visited.has(neighborKey) || segmentCrossesAnyRect(current, neighbor, obstacles)) {
+        continue;
+      }
+      const nextDistance = (distance.get(currentKey) ?? 0) + manhattanDistance(current, neighbor);
+      if (nextDistance < (distance.get(neighborKey) ?? Number.POSITIVE_INFINITY)) {
+        distance.set(neighborKey, nextDistance);
+        previous.set(neighborKey, currentKey);
+        open.add(neighborKey);
+      }
+    }
+  }
+
+  if (!previous.has(endKey) && startKey !== endKey) {
+    return routeAroundGraph(start, end, bounds, obstacles);
+  }
+
+  const route: Point[] = [];
+  let cursor = endKey;
+  route.push(pointsByKey.get(cursor) ?? end);
+  while (cursor !== startKey) {
+    const previousKey = previous.get(cursor);
+    if (!previousKey) {
+      return routeAroundGraph(start, end, bounds, obstacles);
+    }
+    cursor = previousKey;
+    route.push(pointsByKey.get(cursor) ?? start);
+  }
+
+  return simplifyPoints(route.reverse());
+}
+
+function getRouteNeighbors(
+  point: Point,
+  xValues: number[],
+  yValues: number[],
+  xIndexByValue: Map<number, number>,
+  yIndexByValue: Map<number, number>,
+  available: Set<string>,
+  pointsByKey: Map<string, Point>
+): Point[] {
+  const neighbors: Point[] = [];
+  const xIndex = xIndexByValue.get(point.x);
+  const yIndex = yIndexByValue.get(point.y);
+  if (xIndex === undefined || yIndex === undefined) {
+    return neighbors;
+  }
+
+  for (const nextXIndex of [xIndex - 1, xIndex + 1]) {
+    const nextX = xValues[nextXIndex];
+    if (nextX === undefined) {
+      continue;
+    }
+    const key = pointKey({ x: nextX, y: point.y });
+    const neighbor = pointsByKey.get(key);
+    if (neighbor && available.has(key)) {
+      neighbors.push(neighbor);
+    }
+  }
+
+  for (const nextYIndex of [yIndex - 1, yIndex + 1]) {
+    const nextY = yValues[nextYIndex];
+    if (nextY === undefined) {
+      continue;
+    }
+    const key = pointKey({ x: point.x, y: nextY });
+    const neighbor = pointsByKey.get(key);
+    if (neighbor && available.has(key)) {
+      neighbors.push(neighbor);
+    }
+  }
+
+  return neighbors;
+}
+
+function routeAroundGraph(start: Point, end: Point, bounds: Rect, obstacles: Rect[]): Point[] {
+  const candidates = [
+    [start, { x: start.x, y: bounds.top }, { x: end.x, y: bounds.top }, end],
+    [start, { x: start.x, y: bounds.bottom }, { x: end.x, y: bounds.bottom }, end],
+    [start, { x: bounds.left, y: start.y }, { x: bounds.left, y: end.y }, end],
+    [start, { x: bounds.right, y: start.y }, { x: bounds.right, y: end.y }, end],
+    [start, { x: bounds.left, y: start.y }, { x: bounds.left, y: bounds.top }, { x: end.x, y: bounds.top }, end],
+    [start, { x: bounds.right, y: start.y }, { x: bounds.right, y: bounds.top }, { x: end.x, y: bounds.top }, end],
+    [start, { x: bounds.left, y: start.y }, { x: bounds.left, y: bounds.bottom }, { x: end.x, y: bounds.bottom }, end],
+    [start, { x: bounds.right, y: start.y }, { x: bounds.right, y: bounds.bottom }, { x: end.x, y: bounds.bottom }, end]
+  ].map(simplifyPoints);
+  const clearRoutes = candidates.filter((route) => routeIsClear(route, obstacles));
+  const routes = clearRoutes.length > 0 ? clearRoutes : candidates;
+  return routes.sort((left, right) => routeLength(left) + bendCount(left) * 38 - routeLength(right) - bendCount(right) * 38)[0] ?? [start, end];
+}
+
+function directFallbackRoute(from: PositionedNode, to: PositionedNode): Point[] {
+  const fromRect = getNodeRect(from);
+  const toRect = getNodeRect(to);
+  const fromCenter = getRectCenter(fromRect);
+  const toCenter = getRectCenter(toRect);
+  const fromSide: AnchorSide = fromCenter.x <= toCenter.x ? "right" : "left";
+  const toSide: AnchorSide = fromCenter.x <= toCenter.x ? "left" : "right";
+  const start = getAnchorPoint(from, fromSide, 0);
+  const end = getAnchorPoint(to, toSide, 0);
+  const midX = Math.round((start.x + end.x) / 2);
+  return simplifyPoints([start, { x: midX, y: start.y }, { x: midX, y: end.y }, end]);
+}
+
+function getAnchorPoint(node: PositionedNode, side: AnchorSide, tangentOffset: number): Point {
+  const rect = getNodeRect(node);
+  const center = getRectCenter(rect);
+  const inset = 22;
+  switch (side) {
+    case "left":
+      return { x: rect.left, y: clamp(center.y + tangentOffset, rect.top + inset, rect.bottom - inset) };
+    case "right":
+      return { x: rect.right, y: clamp(center.y + tangentOffset, rect.top + inset, rect.bottom - inset) };
+    case "top":
+      return { x: clamp(center.x + tangentOffset, rect.left + inset, rect.right - inset), y: rect.top };
+    case "bottom":
+      return { x: clamp(center.x + tangentOffset, rect.left + inset, rect.right - inset), y: rect.bottom };
+  }
+}
+
+function moveAwayFromNode(point: Point, side: AnchorSide, distance: number): Point {
+  switch (side) {
+    case "left":
+      return { x: point.x - distance, y: point.y };
+    case "right":
+      return { x: point.x + distance, y: point.y };
+    case "top":
+      return { x: point.x, y: point.y - distance };
+    case "bottom":
+      return { x: point.x, y: point.y + distance };
+  }
+}
+
+function getNodeRect(node: PositionedNode): Rect {
+  const width = node.width ?? 184;
+  const height = node.height ?? 96;
+  return {
+    left: node.x,
+    top: node.y,
+    right: node.x + width,
+    bottom: node.y + height
+  };
+}
+
+function getRectCenter(rect: Rect): Point {
+  return {
+    x: Math.round((rect.left + rect.right) / 2),
+    y: Math.round((rect.top + rect.bottom) / 2)
+  };
+}
+
+function getRoutingBounds(nodes: PositionedNode[], start: Point, end: Point): Rect {
+  const rects = nodes.map(getNodeRect);
+  const padding = 52;
+  return {
+    left: Math.min(start.x, end.x, ...rects.map((rect) => rect.left)) - padding,
+    top: Math.min(start.y, end.y, ...rects.map((rect) => rect.top)) - padding,
+    right: Math.max(start.x, end.x, ...rects.map((rect) => rect.right)) + padding,
+    bottom: Math.max(start.y, end.y, ...rects.map((rect) => rect.bottom)) + padding
+  };
+}
+
+function expandRect(rect: Rect, padding: number): Rect {
+  return {
+    left: rect.left - padding,
+    top: rect.top - padding,
+    right: rect.right + padding,
+    bottom: rect.bottom + padding
+  };
+}
+
+function segmentCrossesAnyRect(from: Point, to: Point, rects: Rect[]): boolean {
+  return rects.some((rect) => segmentCrossesRect(from, to, rect));
+}
+
+function segmentCrossesRect(from: Point, to: Point, rect: Rect): boolean {
+  if (from.x === to.x) {
+    const minY = Math.min(from.y, to.y);
+    const maxY = Math.max(from.y, to.y);
+    return from.x > rect.left && from.x < rect.right && Math.max(minY, rect.top) < Math.min(maxY, rect.bottom);
+  }
+  if (from.y === to.y) {
+    const minX = Math.min(from.x, to.x);
+    const maxX = Math.max(from.x, to.x);
+    return from.y > rect.top && from.y < rect.bottom && Math.max(minX, rect.left) < Math.min(maxX, rect.right);
+  }
+  return false;
+}
+
+function isPointInsideAnyRect(point: Point, rects: Rect[]): boolean {
+  return rects.some((rect) => (
+    point.x > rect.left
+    && point.x < rect.right
+    && point.y > rect.top
+    && point.y < rect.bottom
+  ));
+}
+
+function routeIsClear(points: Point[], obstacles: Rect[]): boolean {
+  return points.every((point) => !isPointInsideAnyRect(point, obstacles))
+    && points.slice(1).every((point, index) => !segmentCrossesAnyRect(points[index]!, point, obstacles));
+}
+
+function routeCrossesNodeInterior(points: Point[], nodes: PositionedNode[]): boolean {
+  const rects = nodes.map(getNodeRect);
+  return points.slice(1).some((point, index) => segmentCrossesAnyRect(points[index]!, point, rects));
+}
+
+function simplifyPoints(points: Point[]): Point[] {
+  const compact = points.filter((point, index) => index === 0 || !samePoint(point, points[index - 1]!));
+  const result: Point[] = [];
+  for (const point of compact) {
+    if (result.length >= 2 && areCollinear(result[result.length - 2]!, result[result.length - 1]!, point)) {
+      result[result.length - 1] = point;
+    } else {
+      result.push(point);
+    }
+  }
+  return result;
+}
+
+function areCollinear(first: Point, second: Point, third: Point): boolean {
+  return (first.x === second.x && second.x === third.x) || (first.y === second.y && second.y === third.y);
+}
+
+function samePoint(left: Point, right: Point): boolean {
+  return left.x === right.x && left.y === right.y;
+}
+
+function pointsToPath(points: Point[]): string {
+  const [first, ...rest] = points;
+  if (!first) {
+    return "";
+  }
+  return [`M${first.x} ${first.y}`, ...rest.map((point) => `L${point.x} ${point.y}`)].join(" ");
+}
+
+function getPathLabelPoint(points: Point[]): Point {
+  const total = routeLength(points);
+  if (total <= 0) {
+    return points[0] ?? { x: 0, y: 0 };
+  }
+  let traveled = 0;
+  const halfway = total / 2;
+  for (let index = 1; index < points.length; index += 1) {
+    const from = points[index - 1]!;
+    const to = points[index]!;
+    const segmentLength = manhattanDistance(from, to);
+    if (traveled + segmentLength >= halfway) {
+      const remaining = halfway - traveled;
+      if (from.x === to.x) {
+        return { x: from.x, y: from.y + Math.sign(to.y - from.y) * remaining };
+      }
+      return { x: from.x + Math.sign(to.x - from.x) * remaining, y: from.y };
+    }
+    traveled += segmentLength;
+  }
+  return points.at(-1) ?? points[0] ?? { x: 0, y: 0 };
+}
+
+function routeLength(points: Point[]): number {
+  return points.slice(1).reduce((total, point, index) => total + manhattanDistance(points[index]!, point), 0);
+}
+
+function bendCount(points: Point[]): number {
+  let bends = 0;
+  for (let index = 2; index < points.length; index += 1) {
+    const first = points[index - 2]!;
+    const second = points[index - 1]!;
+    const third = points[index]!;
+    if (!areCollinear(first, second, third)) {
+      bends += 1;
+    }
+  }
+  return bends;
+}
+
+function manhattanDistance(from: Point, to: Point): number {
+  return Math.abs(from.x - to.x) + Math.abs(from.y - to.y);
+}
+
+function getLowestDistanceKey(open: Set<string>, distance: Map<string, number>): string | undefined {
+  let bestKey: string | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const key of open) {
+    const value = distance.get(key) ?? Number.POSITIVE_INFINITY;
+    if (value < bestDistance) {
+      bestDistance = value;
+      bestKey = key;
+    }
+  }
+  return bestKey;
+}
+
+function sortedUniqueNumbers(values: number[]): number[] {
+  return [...new Set(values.map((value) => Math.round(value)))].sort((left, right) => left - right);
+}
+
+function pointKey(point: Point): string {
+  return `${point.x},${point.y}`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function renderModuleGraph(graph: GraphData, ariaLabel: string): string {
@@ -909,12 +1329,12 @@ function getWholeArchitectureGraphData(state: DashboardState): GraphData {
   return {
     nodes,
     edges,
-    viewBox: getViewBox(nodes, nodes.length <= 4 ? 760 : 940, nodes.length <= 4 ? 250 : 360),
+    viewBox: getViewBox(nodes, nodes.length <= 4 ? 760 : 980, nodes.length <= 4 ? 270 : 430, 72),
     summary: hiddenEdgeCount > 0
       ? `Showing top ${edges.length} of ${allEdges.length} inter-feature dependency edges.`
       : `${features.length} feature blocks, ${edges.length} inter-feature dependency edges.`,
     detailRows: edgeDetailRows(edges, state),
-    height: nodes.length <= 4 ? 240 : 360,
+    height: nodes.length <= 4 ? 260 : 430,
     compact: nodes.length <= 4
   };
 }
@@ -950,12 +1370,12 @@ function getImpactGraphData(state: DashboardState): GraphData {
   return {
     nodes,
     edges: visibleEdges,
-    viewBox: getViewBox(nodes, nodes.length <= 4 ? 760 : 900, nodes.length <= 4 ? 230 : 320),
+    viewBox: getViewBox(nodes, nodes.length <= 4 ? 760 : 940, nodes.length <= 4 ? 250 : 360, 72),
     summary: allEdges.length > visibleEdges.length
       ? `${state.snapshot.changedFiles.length} changed files across ${features.length} impacted feature blocks; showing top ${visibleEdges.length} of ${allEdges.length} feature edges.`
       : `${state.snapshot.changedFiles.length} changed files across ${features.length} impacted feature blocks.`,
     detailRows: edgeDetailRows(visibleEdges, state),
-    height: nodes.length <= 4 ? 210 : 310,
+    height: nodes.length <= 4 ? 235 : 360,
     compact: nodes.length <= 4
   };
 }
@@ -1153,7 +1573,7 @@ function renderTopChangesTable(state: DashboardState): string {
         type: "Removed dependency",
         deps: edge.kind
       }))
-    ].slice(0, 12)
+    ]
     : state.snapshot.changedFiles.map((file) => ({
       path: file.path,
       type: "Changed file",
@@ -1694,14 +2114,14 @@ function layoutModuleNodes(modules: ModuleNode[]): PositionedNode[] {
   });
 }
 
-function getViewBox(nodes: PositionedNode[], minWidth = 640, minHeight = 260): string {
+function getViewBox(nodes: PositionedNode[], minWidth = 640, minHeight = 260, padding = 24): string {
   if (nodes.length === 0) {
     return "0 0 840 420";
   }
-  const minX = Math.min(...nodes.map((node) => node.x)) - 24;
-  const minY = Math.min(...nodes.map((node) => node.y)) - 24;
-  const maxX = Math.max(...nodes.map((node) => node.x + (node.width ?? 0))) + 24;
-  const maxY = Math.max(...nodes.map((node) => node.y + (node.height ?? 0))) + 24;
+  const minX = Math.min(...nodes.map((node) => node.x)) - padding;
+  const minY = Math.min(...nodes.map((node) => node.y)) - padding;
+  const maxX = Math.max(...nodes.map((node) => node.x + (node.width ?? 0))) + padding;
+  const maxY = Math.max(...nodes.map((node) => node.y + (node.height ?? 0))) + padding;
   return `${minX} ${minY} ${Math.max(maxX - minX, minWidth)} ${Math.max(maxY - minY, minHeight)}`;
 }
 

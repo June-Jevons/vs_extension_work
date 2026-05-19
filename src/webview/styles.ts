@@ -63,8 +63,8 @@ select {
 
 .dashboard-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.6fr);
-  align-items: start;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
   gap: 12px;
   min-width: 0;
   padding: 8px 10px;
@@ -84,25 +84,19 @@ select {
   font-weight: 650;
 }
 
-.toolbar-title p {
-  margin: 2px 0 0;
-  color: var(--lam-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .toolbar-controls {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
 .control-group {
-  display: grid;
-  gap: 5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
   padding-left: 12px;
   border-left: 1px solid rgba(59, 70, 84, 0.72);
@@ -116,6 +110,8 @@ select {
 .control-group-label {
   color: var(--lam-muted);
   font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .toolbar-actions,
@@ -151,6 +147,19 @@ select {
   padding: 5px 10px;
 }
 
+.toolbar-button {
+  min-height: 26px;
+  border-color: rgba(59, 70, 84, 0.8);
+  background: rgba(13, 18, 25, 0.62);
+  color: #b8c4d2;
+}
+
+.mode-tab {
+  border-color: rgba(88, 166, 255, 0.38);
+  background: rgba(88, 166, 255, 0.08);
+  color: #d8e8ff;
+}
+
 .toolbar-button,
 .mode-tab,
 .icon-button,
@@ -169,7 +178,7 @@ select {
 
 .mode-tab.active {
   border-color: var(--lam-blue);
-  background: rgba(88, 166, 255, 0.18);
+  background: rgba(88, 166, 255, 0.24);
   color: #ffffff;
 }
 
@@ -438,6 +447,33 @@ select {
   max-height: 260px;
 }
 
+.top-changes-scroll {
+  max-height: 288px;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+.top-changes-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.top-changes-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(21, 27, 35, 0.98);
+  border-radius: 999px;
+  background: rgba(141, 153, 168, 0.72);
+}
+
+.top-changes-scroll::-webkit-scrollbar-track {
+  background: rgba(13, 18, 25, 0.52);
+}
+
+.top-changes-scroll .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(21, 27, 35, 0.98);
+}
+
 .data-table {
   width: 100%;
   min-width: 560px;
@@ -569,15 +605,16 @@ select {
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: 10px;
+  bottom: 22px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  max-height: 56px;
+  max-height: 74px;
   overflow: auto;
   color: var(--lam-muted);
   font-size: 11px;
   pointer-events: auto;
+  scrollbar-gutter: stable;
 }
 
 .graph-detail-list span {
@@ -939,6 +976,10 @@ select {
   .control-group {
     border-left: 0;
     padding-left: 0;
+  }
+
+  .dashboard-toolbar {
+    grid-template-columns: 1fr;
   }
 
   .validation-row,
