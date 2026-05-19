@@ -67,7 +67,9 @@ code --new-window \
   /home/jevons/ABB_ROS2
 ```
 
-The checked-in F5 configuration opens a fresh Extension Development Host window, opens `/home/jevons/ABB_ROS2` as the positional workspace folder, uses `/tmp/vscode-lam-*` isolation directories, and runs only `npm: compile` as its prelaunch task. Missing dependencies should fail clearly at compile time; the debug task does not run hidden install commands.
+The default F5 configuration, **Run Live Architecture Map on ABB_ROS2 (Installed Extensions)**, opens a fresh Extension Development Host window with `/home/jevons/ABB_ROS2` as the positional workspace folder while keeping installed extensions such as Codex available. Close any normal VS Code window that already has `/home/jevons/ABB_ROS2` open before starting F5; VS Code may otherwise route the folder-open request to the existing window and leave the Extension Development Host without a workspace.
+
+Use **Run Live Architecture Map on ABB_ROS2 (Clean Host)** when you want a validation-oriented host with isolated `/tmp/vscode-lam-*` user data and extension directories. Both launch configurations run only `npm: compile` as their prelaunch task. Missing dependencies should fail clearly at compile time; the debug task does not run hidden install commands.
 
 ## Validate ABB_ROS2
 

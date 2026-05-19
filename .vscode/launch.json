@@ -2,7 +2,26 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Live Architecture Map on ABB_ROS2 (Ubuntu Native)",
+      "name": "Run Live Architecture Map on ABB_ROS2 (Installed Extensions)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--new-window",
+        "--disable-gpu",
+        "--disable-updates",
+        "--disable-workspace-trust",
+        "--skip-release-notes",
+        "--skip-welcome",
+        "/home/jevons/ABB_ROS2"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/out/**/*.js"
+      ],
+      "preLaunchTask": "npm: compile"
+    },
+    {
+      "name": "Run Live Architecture Map on ABB_ROS2 (Clean Host)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
