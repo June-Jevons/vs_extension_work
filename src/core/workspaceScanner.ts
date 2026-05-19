@@ -67,6 +67,9 @@ export async function scanWorkspace(
     if (!relativePath.endsWith(".py")) {
       continue;
     }
+    if (isTestPath(relativePath)) {
+      continue;
+    }
     currentPythonPaths.add(relativePath);
 
     const stat = await (config.timing?.measure("file stat/hash", () => Promise.resolve(vscode.workspace.fs.stat(uri)))

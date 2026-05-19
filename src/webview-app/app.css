@@ -279,10 +279,10 @@ p {
   height: 100%;
   display: grid;
   align-content: center;
-  gap: 5px;
+  gap: 4px;
   border: 1px solid #4b5d6d;
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 9px 12px;
   background: #16202a;
   color: #e7edf4;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
@@ -290,28 +290,81 @@ p {
 
 .graph-node strong,
 .graph-node span,
-.graph-node small {
+.graph-node small,
+.graph-node em {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .graph-node strong {
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .graph-node span {
   color: #b9c7d4;
   font-size: 11px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.25;
 }
 
 .graph-node small {
   color: #91a2b0;
   font-size: 10px;
+  white-space: nowrap;
+}
+
+.graph-node em {
+  color: #d7cfa5;
+  font-size: 10px;
+  font-style: normal;
+  white-space: nowrap;
 }
 
 .graph-node-feature {
   background: #182531;
+}
+
+.graph-node-system {
+  border-color: #78a6d8;
+  background: #172331;
+}
+
+.graph-node-layer {
+  border-color: #7b8b61;
+  background: #1c241b;
+}
+
+.graph-node-entrypoint {
+  border-color: #78a6d8;
+  background: #152338;
+}
+
+.graph-node-orchestrator {
+  border-color: #c4a455;
+  background: #272213;
+}
+
+.graph-node-service {
+  border-color: #759178;
+  background: #17251d;
+}
+
+.graph-node-adapter {
+  border-color: #ba8871;
+  background: #281d19;
+}
+
+.graph-node-config {
+  border-color: #8db76f;
+  background: #182416;
+}
+
+.graph-node-data {
+  border-color: #a389ce;
+  background: #201b2a;
 }
 
 .graph-node-module {
@@ -332,6 +385,27 @@ p {
 
 .graph-node.risk-low {
   border-color: #69c989;
+}
+
+.graph-node-badges {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.graph-node-badges b {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid #465666;
+  border-radius: 999px;
+  padding: 1px 5px;
+  color: #cdd9e4;
+  font-size: 9px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .graph-handle {

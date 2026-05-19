@@ -36,17 +36,6 @@ const featureBlocks: FeatureBlock[] = [
     riskLevel: "medium"
   },
   {
-    id: "tests-config-scanner",
-    label: "Tests / Config Scanner",
-    description: "Changed configuration scanner and runtime config tests.",
-    pathPatterns: ["tests/config/**"],
-    moduleIds: ["test-runtime-config", "test-config-loader"],
-    incomingEdges: 3,
-    outgoingEdges: 1,
-    changedFileCount: 1,
-    riskLevel: "low"
-  },
-  {
     id: "launcher-subprocess-env",
     label: "Launcher / Subprocess Env",
     description: "Process manager and child environment handling.",
@@ -148,14 +137,12 @@ const featureBlocks: FeatureBlock[] = [
 ];
 
 const modules: ModuleNode[] = [
-  module("runtime-config", "runtime_config", "src/abb_common/config/runtime_config.py", "config-system", ["config-loader", "env-loader"], ["operator-launcher", "test-runtime-config"], false, false, false, "high"),
-  module("config-loader", "config_loader", "src/abb_common/config/config_loader.py", "config-system", ["env-loader"], ["runtime-config", "test-config-loader"], false, false, false, "medium"),
+  module("runtime-config", "runtime_config", "src/abb_common/config/runtime_config.py", "config-system", ["config-loader", "env-loader"], ["operator-launcher"], false, false, false, "high"),
+  module("config-loader", "config_loader", "src/abb_common/config/config_loader.py", "config-system", ["env-loader"], ["runtime-config"], false, false, false, "medium"),
   module("env-loader", "env_loader", "src/abb_common/config/env_loader.py", "config-system", [], ["runtime-config", "config-loader"], false, false, false, "medium"),
   module("config-utils", "config_utils", "src/abb_common/config/config_utils.py", "config-system", ["file-utils"], ["runtime-config"], false, false, false, "low"),
   module("operator-launcher", "launcher", "src/operator_panel/launcher.py", "operator-panel-startup", ["runtime-config", "process-manager"], ["operator-startup"], true, false, false, "medium"),
   module("operator-startup", "startup", "src/operator_panel/startup.py", "operator-panel-startup", ["operator-launcher"], ["main-gui"], true, false, false, "medium"),
-  module("test-runtime-config", "test_runtime_config", "tests/config/test_runtime_config.py", "tests-config-scanner", ["runtime-config"], [], false, true, false, "low"),
-  module("test-config-loader", "test_config_loader", "tests/config/test_config_loader.py", "tests-config-scanner", ["config-loader"], [], false, true, false, "low"),
   module("process-manager", "process_manager", "src/launch/process_manager.py", "launcher-subprocess-env", ["env-loader"], ["ros-launcher"], false, false, false, "medium"),
   module("env-manager", "env_manager", "src/launch/env_manager.py", "launcher-subprocess-env", ["env-loader"], ["process-manager"], false, false, false, "medium"),
   module("ros-launcher", "ros_launcher", "launch/ros_launcher.py", "ros-launch-runtime", ["process-manager", "node-manager"], [], true, false, false, "low"),
@@ -199,8 +186,6 @@ const dependencies: DependencyEdge[] = [
   edge("operator-launcher", "runtime-config"),
   edge("operator-launcher", "process-manager"),
   edge("operator-startup", "operator-launcher", "entrypoint"),
-  edge("test-runtime-config", "runtime-config", "test"),
-  edge("test-config-loader", "config-loader", "test"),
   edge("process-manager", "env-loader"),
   edge("env-manager", "env-loader"),
   edge("ros-launcher", "process-manager", "entrypoint"),
@@ -240,7 +225,7 @@ const changedFiles: ChangedFile[] = [
     featureId: "config-system",
     moduleId: "runtime-config",
     riskLevel: "high",
-    reason: "Runtime config is imported by launcher and tests.",
+    reason: "Runtime config is imported by launcher and runtime settings.",
     lastChangedIso: "2024-05-20T14:31:22+08:00"
   },
   {
@@ -261,15 +246,6 @@ const changedFiles: ChangedFile[] = [
     reason: "Environment loader feeds subprocess launch.",
     lastChangedIso: "2024-05-20T14:29:48+08:00"
   },
-  {
-    path: "tests/config/test_runtime_config.py",
-    status: "modified",
-    featureId: "tests-config-scanner",
-    moduleId: "test-runtime-config",
-    riskLevel: "low",
-    reason: "Changed targeted runtime config test.",
-    lastChangedIso: "2024-05-20T14:28:15+08:00"
-  }
 ];
 
 const validations: ValidationStatus[] = [
@@ -382,8 +358,8 @@ export function createMockDashboardState(
         .map((moduleNode) => moduleNode.path)
         .slice(0, 12),
       unclassifiedReasonCounts: [],
-      testModuleCount: snapshot.modules.filter((moduleNode) => moduleNode.isTest).length,
-      runtimeModuleCount: snapshot.modules.filter((moduleNode) => !moduleNode.isTest).length,
+      testModuleCount: 0,
+      runtimeModuleCount: snapshot.modules.length,
       parsedImportStatementCount: snapshot.dependencies.length,
       resolvedLocalEdgeCount: snapshot.dependencies.length,
       unresolvedImportCount: 0,
@@ -434,7 +410,7 @@ export function createMockSnapshot(): WorkspaceSnapshot {
         moduleCount: 4,
         changedFileCount: 2,
         riskLevel: "high",
-        reason: "Changed runtime config feeds startup and tests."
+        reason: "Changed runtime config feeds startup and runtime settings."
       },
       {
         featureId: "operator-panel-startup",
@@ -443,14 +419,6 @@ export function createMockSnapshot(): WorkspaceSnapshot {
         changedFileCount: 1,
         riskLevel: "medium",
         reason: "Launcher imports changed config modules."
-      },
-      {
-        featureId: "tests-config-scanner",
-        label: "Tests / Config Scanner",
-        moduleCount: 2,
-        changedFileCount: 1,
-        riskLevel: "low",
-        reason: "Targeted tests are directly related."
       },
       {
         featureId: "launcher-subprocess-env",
@@ -489,18 +457,18 @@ export function createMockSnapshot(): WorkspaceSnapshot {
         label: "Low",
         level: "low",
         count: 1,
-        detail: "Targeted tests cover direct config paths."
+        detail: "Low-risk runtime files have limited blast radius."
       }
     ],
     health: {
-      totalPythonFiles: 73,
-      totalModules: 38,
+      totalPythonFiles: modules.length,
+      totalModules: modules.length,
       totalClasses: 146,
       totalFunctions: 312,
       circularDependencyCount: 0,
       highRiskModuleCount: 3,
       orphanModuleCount: 2,
-      estimatedTestCoverage: 68
+      estimatedTestCoverage: 0
     },
     validations
   };

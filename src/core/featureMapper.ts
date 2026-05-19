@@ -15,15 +15,16 @@ export interface FeatureDefinition {
   defaultRisk: RiskLevel;
 }
 
+const TEST_FEATURE: FeatureDefinition = {
+  id: "tests",
+  label: "Tests",
+  description: "Internal test-path marker used only for exclusion.",
+  pathPatterns: ["test", "tests", "spec"],
+  keywords: ["test", "tests", "spec"],
+  defaultRisk: "low"
+};
+
 export const BUILT_IN_FEATURES: FeatureDefinition[] = [
-  {
-    id: "tests",
-    label: "Tests",
-    description: "Unit, integration, and configuration scanner tests.",
-    pathPatterns: ["test", "tests", "spec"],
-    keywords: ["test", "tests", "spec"],
-    defaultRisk: "low"
-  },
   {
     id: "docs",
     label: "Docs",
@@ -121,7 +122,7 @@ export function classifyFeatureForPath(relativePath: string): FeatureClassificat
 
   if (isTestPath(relativePath)) {
     return {
-      feature: getFeatureDefinition("tests"),
+      feature: TEST_FEATURE,
       reason: {
         category: "path-pattern-match",
         detail: "Path is under tests or follows test naming.",
@@ -256,32 +257,40 @@ export function inferFeatureFromImportsDetailed(
 }
 
 export function buildFeatureBlocks(modules: ModuleNode[], dependencies: DependencyEdge[]): FeatureBlock[] {
-  return BUILT_IN_FEATURES.map((feature) => {
-    const featureModules = modules.filter((moduleNode) => moduleNode.featureId === feature.id
-      && (feature.id === "tests" ? moduleNode.isTest : !moduleNode.isTest));
-    const moduleIds = new Set(featureModules.map((moduleNode) => moduleNode.id));
-    const incomingEdges = dependencies.filter((edge) => moduleIds.has(edge.to) && !moduleIds.has(edge.from)).length;
-    const outgoingEdges = dependencies.filter((edge) => moduleIds.has(edge.from) && !moduleIds.has(edge.to)).length;
-    const changedFileCount = featureModules.filter((moduleNode) => moduleNode.riskLevel !== "low").length;
-    const description = feature.id === "unmapped-unknown" && featureModules.length > 0
-      ? `${featureModules.length} unclassified modules. Samples: ${featureModules.slice(0, 4).map((moduleNode) => moduleNode.path).join(", ")}`
-      : feature.description;
+  const visibleModules = modules.filter((moduleNode) => !moduleNode.isTest && moduleNode.featureId !== "tests");
+  const visibleModuleIds = new Set(visibleModules.map((moduleNode) => moduleNode.id));
+  const visibleDependencies = dependencies.filter((edge) => edge.kind !== "test" && visibleModuleIds.has(edge.from) && visibleModuleIds.has(edge.to));
 
-    return {
-      id: feature.id,
-      label: feature.label,
-      description,
-      pathPatterns: feature.pathPatterns,
-      moduleIds: featureModules.map((moduleNode) => moduleNode.id),
-      incomingEdges,
-      outgoingEdges,
-      changedFileCount,
-      riskLevel: highestRisk(featureModules.map((moduleNode) => moduleNode.riskLevel), feature.defaultRisk)
-    };
-  }).filter((feature) => feature.moduleIds.length > 0);
+  return BUILT_IN_FEATURES
+    .filter((feature) => feature.id !== "tests")
+    .map((feature) => {
+      const featureModules = visibleModules.filter((moduleNode) => moduleNode.featureId === feature.id);
+      const moduleIds = new Set(featureModules.map((moduleNode) => moduleNode.id));
+      const incomingEdges = visibleDependencies.filter((edge) => moduleIds.has(edge.to) && !moduleIds.has(edge.from)).length;
+      const outgoingEdges = visibleDependencies.filter((edge) => moduleIds.has(edge.from) && !moduleIds.has(edge.to)).length;
+      const changedFileCount = featureModules.filter((moduleNode) => moduleNode.riskLevel !== "low").length;
+      const description = feature.id === "unmapped-unknown" && featureModules.length > 0
+        ? `${featureModules.length} unclassified modules. Samples: ${featureModules.slice(0, 4).map((moduleNode) => moduleNode.path).join(", ")}`
+        : feature.description;
+
+      return {
+        id: feature.id,
+        label: feature.label,
+        description,
+        pathPatterns: feature.pathPatterns,
+        moduleIds: featureModules.map((moduleNode) => moduleNode.id),
+        incomingEdges,
+        outgoingEdges,
+        changedFileCount,
+        riskLevel: highestRisk(featureModules.map((moduleNode) => moduleNode.riskLevel), feature.defaultRisk)
+      };
+    }).filter((feature) => feature.moduleIds.length > 0);
 }
 
 export function getFeatureDefinition(featureId: string | undefined): FeatureDefinition {
+  if (featureId === TEST_FEATURE.id) {
+    return TEST_FEATURE;
+  }
   return BUILT_IN_FEATURES.find((feature) => feature.id === featureId) ?? BUILT_IN_FEATURES[BUILT_IN_FEATURES.length - 1]!;
 }
 

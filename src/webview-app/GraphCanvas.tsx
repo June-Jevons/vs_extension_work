@@ -13,7 +13,7 @@ import {
   ReactFlowProvider
 } from "@xyflow/react";
 import { layoutGraphWithElk } from "../webview/elkLayout";
-import { GraphViewModel, GraphViewNode } from "../webview/graphViewModel";
+import { GraphViewEdge, GraphViewModel, GraphViewNode } from "../webview/graphViewModel";
 import { getCachedLayout, storeCachedLayout } from "./layoutCache";
 
 interface GraphCanvasProps {
@@ -28,7 +28,15 @@ type FlowNodeData = {
 type FlowNode = Node<FlowNodeData>;
 
 const nodeTypes = {
+  system: GraphNodeCard,
   feature: GraphNodeCard,
+  layer: GraphNodeCard,
+  entrypoint: GraphNodeCard,
+  orchestrator: GraphNodeCard,
+  service: GraphNodeCard,
+  adapter: GraphNodeCard,
+  config: GraphNodeCard,
+  data: GraphNodeCard,
   module: GraphNodeCard,
   summary: GraphNodeCard
 };
@@ -130,12 +138,25 @@ function LaidOutGraph({ view }: { view: GraphViewModel }): React.JSX.Element {
 
 function GraphNodeCard({ data }: NodeProps<FlowNode>): React.JSX.Element {
   const node = data.graphNode;
+  const metrics = [
+    typeof node.moduleCount === "number" ? `${node.moduleCount} modules` : undefined,
+    typeof node.changedFileCount === "number" && node.changedFileCount > 0 ? `${node.changedFileCount} changed` : undefined,
+    node.riskLevel ? `${node.riskLevel} risk` : undefined
+  ].filter((item): item is string => Boolean(item));
   return (
     <div className={`graph-node graph-node-${node.kind} risk-${node.riskLevel ?? "none"}`}>
       <Handle className="graph-handle" type="target" position={Position.Left} />
       <strong>{node.label}</strong>
+      {node.role ? <em>{node.role}</em> : null}
       <span>{node.detail}</span>
-      <small>{node.kind}{node.riskLevel ? ` / ${node.riskLevel}` : ""}</small>
+      {metrics.length > 0 ? <small>{metrics.join(" / ")}</small> : <small>{node.kind}</small>}
+      {node.badges && node.badges.length > 0 ? (
+        <div className="graph-node-badges">
+          {node.badges.slice(0, 3).map((badge) => (
+            <b key={badge}>{badge}</b>
+          ))}
+        </div>
+      ) : null}
       <Handle className="graph-handle" type="source" position={Position.Right} />
     </div>
   );
@@ -170,8 +191,9 @@ function toFlowEdges(view: GraphViewModel): Edge[] {
       color: "#90a9ba"
     },
     style: {
-      stroke: edge.kind === "test" ? "#8fd6a4" : "#90a9ba",
-      strokeWidth: 1.7
+      stroke: getEdgeColor(edge.semanticKind),
+      strokeWidth: edge.confidence === "low" ? 1.2 : 1.7,
+      strokeDasharray: edge.confidence === "low" ? "6 5" : undefined
     },
     labelStyle: {
       fill: "#c9d6e2",
@@ -181,6 +203,29 @@ function toFlowEdges(view: GraphViewModel): Edge[] {
       fill: "#101820"
     }
   }));
+}
+
+function getEdgeColor(kind: GraphViewEdge["semanticKind"]): string {
+  switch (kind) {
+    case "starts":
+    case "flows":
+      return "#86b7ff";
+    case "calls":
+    case "uses":
+    case "imports":
+      return "#90a9ba";
+    case "configures":
+      return "#a6d98c";
+    case "publishes":
+    case "subscribes":
+      return "#d7a4ff";
+    case "validates":
+      return "#f2c56d";
+    case "contains":
+      return "#6e8393";
+    default:
+      return "#90a9ba";
+  }
 }
 
 function getRiskColor(riskLevel: GraphViewNode["riskLevel"]): string {

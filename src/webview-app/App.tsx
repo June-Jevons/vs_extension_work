@@ -5,6 +5,7 @@ import {
   dashboardModes,
   getModeLabel
 } from "../webview/dashboardState";
+import { filterArchitectureVisibleFeatureBlocks } from "../webview/architectureVisibility";
 import { ExtensionToWebviewMessage, isExtensionToWebviewMessage } from "../webview/messageProtocol";
 import { buildFeatureFocusViewModel } from "../webview/featureFocusViewModel";
 import { buildGraphViewForTarget } from "../webview/graphViewModel";
@@ -100,9 +101,13 @@ export function App(): React.JSX.Element {
 }
 
 function Dashboard({ state }: { state: DashboardState }): React.JSX.Element {
+  const visibleFeatureBlocks = useMemo(
+    () => filterArchitectureVisibleFeatureBlocks(state.snapshot.featureBlocks, state.snapshot.modules),
+    [state.snapshot.featureBlocks, state.snapshot.modules]
+  );
   const activeFeature = useMemo(
-    () => state.snapshot.featureBlocks.find((feature) => feature.id === state.selectedFeatureId) ?? state.snapshot.featureBlocks[0],
-    [state.selectedFeatureId, state.snapshot.featureBlocks]
+    () => visibleFeatureBlocks.find((feature) => feature.id === state.selectedFeatureId) ?? visibleFeatureBlocks[0],
+    [state.selectedFeatureId, visibleFeatureBlocks]
   );
 
   return (
@@ -234,6 +239,11 @@ function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
 
 function WholeArchitecture({ state }: { state: DashboardState }): React.JSX.Element {
   const graphView = useMemo(() => buildGraphViewForTarget(state, "wholeArchitecture"), [state]);
+  const visibleFeatureBlocks = useMemo(
+    () => filterArchitectureVisibleFeatureBlocks(state.snapshot.featureBlocks, state.snapshot.modules),
+    [state.snapshot.featureBlocks, state.snapshot.modules]
+  );
+  const unclassifiedRuntimeModules = state.snapshot.modules.filter((moduleNode) => !moduleNode.isTest && moduleNode.featureId === "unmapped-unknown").length;
 
   return (
     <div className="two-column">
@@ -241,14 +251,14 @@ function WholeArchitecture({ state }: { state: DashboardState }): React.JSX.Elem
       <section data-testid="architecture-overview-cards">
         <h2>Feature Blocks</h2>
         <ul className="plain-list">
-          {state.snapshot.featureBlocks.map((feature) => (
+          {visibleFeatureBlocks.map((feature) => (
             <li key={feature.id}>{feature.label}: {feature.moduleIds.length} modules</li>
           ))}
         </ul>
       </section>
       <section data-testid="architecture-health-cards">
         <h2>Architecture Health</h2>
-        <p>{state.snapshot.health.highRiskModuleCount} high-risk modules, {state.snapshot.health.orphanModuleCount} orphan modules.</p>
+        <p>{state.snapshot.health.highRiskModuleCount} high-risk runtime modules, {state.snapshot.health.orphanModuleCount} orphan runtime modules, {unclassifiedRuntimeModules} unclassified runtime modules.</p>
       </section>
     </div>
   );
@@ -275,28 +285,38 @@ function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activ
           value={activeFeature?.id ?? ""}
           onChange={(event) => postToExtension({ type: "selectFeature", featureId: event.target.value })}
         >
-          {state.snapshot.featureBlocks.map((feature) => (
+          {filterArchitectureVisibleFeatureBlocks(state.snapshot.featureBlocks, state.snapshot.modules).map((feature) => (
             <option key={feature.id} value={feature.id}>{feature.label}</option>
           ))}
         </select>
       </section>
+      <section data-testid="runtime-flow-summary">
+        <h2>Runtime Flow Summary</h2>
+        <p>{activeFeature?.description ?? "No runtime feature is selected."}</p>
+        <p>{focusView.runtimeModules.length} runtime modules across {focusView.roleGroups.length} inferred role groups.</p>
+      </section>
+      <GraphCanvas testId="internal-dependency-graph" view={graphView} />
       <section data-testid="module-composition-panel">
-        <h2>{activeFeature?.label ?? "Feature"} Modules</h2>
+        <h2>Role Groups</h2>
         <ul className="plain-list">
-          {focusView.runtimeModules.slice(0, 12).map((moduleNode) => (
-            <li key={moduleNode.id}>{moduleNode.path}</li>
+          {focusView.roleGroups.map((group) => (
+            <li key={group.role}>{group.label}: {group.modules.length} modules ({group.confidence})</li>
           ))}
         </ul>
       </section>
-      <GraphCanvas testId="internal-dependency-graph" view={graphView} />
       <section data-testid="related-external-dependencies">
-        <h2>Related External Dependencies</h2>
-        <p>{state.snapshot.dependencies.length} workspace dependency edges are available.</p>
-      </section>
-      <section data-testid="related-tests">
-        <h2>Related Tests</h2>
+        <h2>Key Runtime Dependencies</h2>
+        <p>{focusView.runtimeDependencies.length} runtime dependency edges are connected to this feature.</p>
         <ul className="plain-list">
-          {focusView.relatedTests.map((moduleNode) => (
+          {focusView.runtimeDependencies.slice(0, 8).map((dependency) => (
+            <li key={`${dependency.from}:${dependency.to}:${dependency.kind}`}>{dependency.from} {"->"} {dependency.to}</li>
+          ))}
+        </ul>
+      </section>
+      <section data-testid="unclassified-runtime-modules">
+        <h2>Supporting / Unclassified Runtime Modules</h2>
+        <ul className="plain-list">
+          {focusView.unclassifiedRuntimeModules.slice(0, 8).map((moduleNode) => (
             <li key={moduleNode.id}>{moduleNode.path}</li>
           ))}
         </ul>
@@ -322,7 +342,7 @@ function DiffSinceBaseline({ state }: { state: DashboardState }): React.JSX.Elem
       <section data-testid="top-changes-table">
         <h2>Top Changes</h2>
         <ul className="plain-list">
-          {(state.baselineDiff?.changedModules ?? []).slice(0, 8).map((moduleNode) => (
+          {(state.baselineDiff?.changedModules ?? []).filter((moduleNode) => !moduleNode.isTest).slice(0, 8).map((moduleNode) => (
             <li key={moduleNode.id}>{moduleNode.path}</li>
           ))}
         </ul>

@@ -44,6 +44,7 @@ assert.strictEqual(weakInference.feature.id, "unmapped-unknown");
 assert.strictEqual(weakInference.reason.category, "no-strong-import-neighbor-inference");
 
 const blocks = buildFeatureBlocks(modules, [{ from: "a", to: "b", kind: "import", confidence: "high" }]);
+assert.ok(!blocks.some((block) => block.id === "tests"), "test paths should remain internal and never produce a user-facing feature block");
 assert.ok(blocks.some((block) => block.id === "safety-layer"));
 const motionBlock = blocks.find((block) => block.id === "motion-planning");
 assert.ok(motionBlock, "motion planning block should exist");

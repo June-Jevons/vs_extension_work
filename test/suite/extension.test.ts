@@ -31,10 +31,11 @@ const requiredReactTestIds = [
   "architecture-overview-cards",
   "architecture-health-cards",
   "feature-selector",
+  "runtime-flow-summary",
   "module-composition-panel",
   "internal-dependency-graph",
   "related-external-dependencies",
-  "related-tests",
+  "unclassified-runtime-modules",
   "baseline-selector",
   "baseline-summary-cards",
   "before-after-graph",
@@ -95,14 +96,12 @@ assert.strictEqual(liveState.diagnostics.scannerStatus, "vscodeFindFiles");
 
 const focusView = buildFeatureFocusViewModel(liveState, "motion-planning");
 assert.deepStrictEqual(focusView.runtimeModules.map((moduleNode) => moduleNode.id), ["src/motion/box_motion"]);
-assert.deepStrictEqual(focusView.relatedTests.map((moduleNode) => moduleNode.path), [
-  "tests/test_box_motion_auto_generate.py",
-  "tests/test_motion_program.py"
-]);
+assert.ok(focusView.roleGroups.length > 0, "Feature focus should group runtime modules by inferred role");
+assert.ok(focusView.runtimeModules.every((moduleNode) => !moduleNode.isTest), "Feature focus should only expose runtime modules");
 
 const focusGraph = buildGraphViewForTarget(liveState, "featureInternal", "motion-planning");
-assert.ok(focusGraph.nodes.some((node) => node.id === "src/motion/box_motion"));
-assert.ok(!focusGraph.nodes.some((node) => node.id === "tests/test_motion_program"), "Feature internal graph should keep related tests out of runtime composition");
+assert.ok(focusGraph.nodes.some((node) => /Motion Builder|Validation|Output/.test(node.label)));
+assert.ok(!JSON.stringify(focusGraph).toLowerCase().includes("test"), "Feature internal graph should keep inspected workspace tests out of runtime composition");
 
 for (const sampleNode of ["runtime-config", "operator-launcher", "tests-config-scanner", "launcher-subprocess-env", "ros-launch-runtime"]) {
   assert.ok(!JSON.stringify(liveState).includes(sampleNode), `live real-state fixture should not leak mock sample node ${sampleNode}`);
@@ -116,23 +115,16 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
     moduleNode("src/motion/box_motion", "box_motion", "src/motion/box_motion.py", "motion-planning", ["src/safety/collision_guard"], ["src/gui/motion_panel", "tests/test_motion_program", "tests/test_box_motion_auto_generate"], false, "high"),
     moduleNode("src/safety/collision_guard", "collision_guard", "src/safety/collision_guard.py", "safety-layer", [], ["src/motion/box_motion"], false, "medium"),
     moduleNode("src/gui/motion_panel", "motion_panel", "src/gui/motion_panel.py", "gui-layer", ["src/motion/box_motion"], [], false, "medium"),
-    moduleNode("tests/test_motion_program", "test_motion_program", "tests/test_motion_program.py", "tests", ["src/motion/box_motion"], [], true, "low"),
-    moduleNode("tests/test_box_motion_auto_generate", "test_box_motion_auto_generate", "tests/test_box_motion_auto_generate.py", "tests", ["src/motion/box_motion"], [], true, "low"),
-    moduleNode("tests/test_config_loader", "test_config_loader", "tests/test_config_loader.py", "tests", ["src/config/runtime_config"], [], true, "low"),
     moduleNode("src/misc/legacy_loader", "legacy_loader", "src/misc/legacy_loader.py", "unmapped-unknown", [], [], false, "low")
   ];
   const dependencies: DependencyEdge[] = [
     edge("src/motion/box_motion", "src/safety/collision_guard"),
-    edge("src/gui/motion_panel", "src/motion/box_motion"),
-    edge("tests/test_motion_program", "src/motion/box_motion", "test"),
-    edge("tests/test_box_motion_auto_generate", "src/motion/box_motion", "test"),
-    edge("tests/test_config_loader", "src/config/runtime_config", "test")
+    edge("src/gui/motion_panel", "src/motion/box_motion")
   ];
   const featureBlocks: FeatureBlock[] = [
     featureBlock("motion-planning", "Motion Planning", ["src/motion/box_motion"], 1, 1),
     featureBlock("safety-layer", "Safety Layer", ["src/safety/collision_guard"], 1, 0),
     featureBlock("gui-layer", "GUI Layer", ["src/gui/motion_panel"], 0, 1),
-    featureBlock("tests", "Tests", ["tests/test_motion_program", "tests/test_box_motion_auto_generate", "tests/test_config_loader"], 0, 2),
     featureBlock("unmapped-unknown", "Unclassified Modules", ["src/misc/legacy_loader"], 0, 0)
   ];
   const risks: RiskItem[] = [
@@ -193,7 +185,7 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
         circularDependencyCount: 0,
         highRiskModuleCount: 1,
         orphanModuleCount: 1,
-        estimatedTestCoverage: 60
+        estimatedTestCoverage: 0
       },
       validations: []
     },
@@ -211,7 +203,7 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
       unmappedModuleCount: 1,
       unclassifiedModulePaths: ["src/misc/legacy_loader.py"],
       unclassifiedReasonCounts: [{ reason: "no-strong-import-neighbor-inference", count: 1 }],
-      testModuleCount: 3,
+      testModuleCount: 0,
       runtimeModuleCount: 4,
       parsedImportStatementCount: dependencies.length,
       resolvedLocalEdgeCount: dependencies.length,

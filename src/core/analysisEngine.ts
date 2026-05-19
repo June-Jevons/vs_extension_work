@@ -20,10 +20,11 @@ import {
   WorkspaceDiagnostics,
   WorkspaceSnapshot
 } from "../webview/dashboardState";
+import { filterArchitectureVisibleDependencies, filterArchitectureVisibleModules } from "../webview/architectureVisibility";
 import { buildGraphViewForTarget } from "../webview/graphViewModel";
 import { AnalysisTimingRecorder, formatAnalysisTimings } from "./analysisTiming";
 import { FileAnalysisCache } from "./fileAnalysisCache";
-import { buildFeatureBlocks, getFeatureDefinition, inferFeatureFromImportsDetailed, mapFeatureForPath } from "./featureMapper";
+import { buildFeatureBlocks, getFeatureDefinition, inferFeatureFromImportsDetailed, isTestPath, mapFeatureForPath } from "./featureMapper";
 import { mergeChangedFileInputs } from "./liveChangeInputs";
 import { buildRiskSummary, scoreChangedFileWithReason, scoreModuleRisk } from "./riskScorer";
 import { scanWorkspace } from "./workspaceScanner";
@@ -230,7 +231,12 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       );
     }
 
-    const graph = timing.measureSync("dependency resolve", () => buildDependencyGraph(scan.modules, scan.importRecords));
+    const rawGraph = timing.measureSync("dependency resolve", () => buildDependencyGraph(scan.modules, scan.importRecords));
+    const graph = {
+      ...rawGraph,
+      modules: filterArchitectureVisibleModules(rawGraph.modules),
+      dependencies: filterArchitectureVisibleDependencies(rawGraph.dependencies, rawGraph.modules)
+    };
     logInfo(`import edge count=${graph.dependencies.length}, parsedImports=${graph.diagnostics.parsedImportStatementCount}, unresolvedImports=${graph.diagnostics.unresolvedImportCount}`);
     const modulesWithFeatures = timing.measureSync("feature mapping", () => applyFeatureInference(graph.modules, graph.dependencies));
     const modules = timing.measureSync("risk scoring", () => modulesWithFeatures.map((moduleNode) => {
@@ -266,14 +272,14 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       impactedFeatures,
       risks: buildRiskSummary(changedFiles),
       health: {
-        totalPythonFiles: scan.totalPythonFiles,
+        totalPythonFiles: modules.length,
         totalModules: modules.length,
         totalClasses: scan.totalClasses,
         totalFunctions: scan.totalFunctions,
         circularDependencyCount: countMutualDependencies(graph.dependencies),
         highRiskModuleCount: modules.filter((moduleNode) => moduleNode.riskLevel === "high").length,
         orphanModuleCount: modules.filter((moduleNode) => moduleNode.isOrphan).length,
-        estimatedTestCoverage: estimateCoverage(modules)
+        estimatedTestCoverage: 0
       },
       validations: buildValidationStatuses(scan.unreadableFiles)
     };
@@ -296,7 +302,7 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       pathKind: describePathKind(folder.uri.fsPath),
       stateSource: "real",
       fallbackReason: gitStatus.unavailableReason,
-      pythonFileCount: scan.totalPythonFiles,
+      pythonFileCount: modules.length,
       moduleCount: modules.length,
       dependencyCount: graph.dependencies.length,
       graphNodeCount: featureBlocks.length,
@@ -304,10 +310,10 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       unmappedModuleCount: unclassifiedModules.length,
       unclassifiedModulePaths: unclassifiedModules.slice(0, 12).map((moduleNode) => moduleNode.path),
       unclassifiedReasonCounts: countClassificationReasons(unclassifiedModules),
-      testModuleCount: modules.filter((moduleNode) => moduleNode.isTest).length,
-      runtimeModuleCount: modules.filter((moduleNode) => !moduleNode.isTest).length,
+      testModuleCount: 0,
+      runtimeModuleCount: modules.length,
       parsedImportStatementCount: graph.diagnostics.parsedImportStatementCount,
-      resolvedLocalEdgeCount: graph.diagnostics.resolvedLocalEdgeCount,
+      resolvedLocalEdgeCount: graph.dependencies.length,
       unresolvedImportCount: graph.diagnostics.unresolvedImportCount,
       changedFileCount: changedFiles.length,
       gitBranch: gitStatus.summary?.branch ?? "unknown",
@@ -323,7 +329,7 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       baselineCapturedAtIso: baseline?.capturedAtIso
     };
     logInfo(
-      `final state source=real, mockData=false, pythonFiles=${diagnostics.pythonFileCount}, modules=${diagnostics.moduleCount}, featureBlocks=${featureBlocks.length}, unmappedModules=${diagnostics.unmappedModuleCount}, testModules=${diagnostics.testModuleCount}, runtimeModules=${diagnostics.runtimeModuleCount}, dependencies=${diagnostics.dependencyCount}, graphEdges=${diagnostics.graphEdgeCount}, parsedImports=${diagnostics.parsedImportStatementCount}, unresolvedImports=${diagnostics.unresolvedImportCount}, changedFiles=${diagnostics.changedFileCount}, gitBranch=${diagnostics.gitBranch}, gitStatusSource=${diagnostics.gitStatusSource}`
+      `final state source=real, mockData=false, pythonFiles=${diagnostics.pythonFileCount}, runtimeModules=${diagnostics.runtimeModuleCount}, featureBlocks=${featureBlocks.length}, unmappedModules=${diagnostics.unmappedModuleCount}, dependencies=${diagnostics.dependencyCount}, graphEdges=${diagnostics.graphEdgeCount}, parsedImports=${diagnostics.parsedImportStatementCount}, unresolvedImports=${diagnostics.unresolvedImportCount}, changedFiles=${diagnostics.changedFileCount}, gitBranch=${diagnostics.gitBranch}, gitStatusSource=${diagnostics.gitStatusSource}`
     );
     logInfo(`analysis timing: ${formatAnalysisTimings(timings)}, cacheHits=${scan.cache.hitCount}, cacheMisses=${scan.cache.missCount}, cacheEntries=${scan.cache.entryCount}, incremental=${diagnostics.incremental}, changedPathCount=${diagnostics.changedPathCount}, workspaceIndexReason=${diagnostics.workspaceIndexReason}`);
 
@@ -516,13 +522,22 @@ function buildChangedFiles(
   modules: ModuleNode[]
 ): ChangedFile[] {
   const modulesByPath = new Map(modules.map((moduleNode) => [moduleNode.path, moduleNode]));
-  return gitFiles.map((gitFile) => {
+  return gitFiles.flatMap((gitFile) => {
     const normalizedPath = gitFile.path.replaceAll("\\", "/");
+    if (isTestPath(normalizedPath)) {
+      return [];
+    }
     const moduleNode = modulesByPath.get(normalizedPath);
+    if (moduleNode?.isTest) {
+      return [];
+    }
     const feature = moduleNode?.featureId ? getFeatureDefinition(moduleNode.featureId) : mapFeatureForPath(normalizedPath);
+    if (feature.id === "tests") {
+      return [];
+    }
     const risk = scoreChangedFileWithReason(normalizedPath, moduleNode);
 
-    return {
+    return [{
       path: normalizedPath,
       status: gitFile.status,
       featureId: feature.id,
@@ -530,7 +545,7 @@ function buildChangedFiles(
       riskLevel: risk.level,
       reason: risk.reason,
       lastChangedIso: new Date().toISOString()
-    };
+    }];
   });
 }
 

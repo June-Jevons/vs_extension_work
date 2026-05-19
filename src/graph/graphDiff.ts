@@ -1,26 +1,32 @@
 import { BaselineDiff, DependencyEdge, FeatureBlock, ModuleNode, RiskItem, WorkspaceSnapshot } from "../webview/dashboardState";
+import { filterArchitectureVisibleDependencies, filterArchitectureVisibleFeatureBlocks, filterArchitectureVisibleModules } from "../webview/architectureVisibility";
 
 export function buildGraphDiff(baseline: WorkspaceSnapshot, current: WorkspaceSnapshot): BaselineDiff {
-  const baselineModules = new Map(baseline.modules.map((moduleNode) => [moduleNode.id, moduleNode]));
-  const currentModules = new Map(current.modules.map((moduleNode) => [moduleNode.id, moduleNode]));
-  const baselineEdges = new Map(baseline.dependencies.map((edge) => [edgeKey(edge), edge]));
-  const currentEdges = new Map(current.dependencies.map((edge) => [edgeKey(edge), edge]));
+  const baselineRuntimeModules = filterArchitectureVisibleModules(baseline.modules);
+  const currentRuntimeModules = filterArchitectureVisibleModules(current.modules);
+  const baselineRuntimeEdges = filterArchitectureVisibleDependencies(baseline.dependencies, baselineRuntimeModules);
+  const currentRuntimeEdges = filterArchitectureVisibleDependencies(current.dependencies, currentRuntimeModules);
+  const currentRuntimeFeatures = filterArchitectureVisibleFeatureBlocks(current.featureBlocks, currentRuntimeModules);
+  const baselineModules = new Map(baselineRuntimeModules.map((moduleNode) => [moduleNode.id, moduleNode]));
+  const currentModules = new Map(currentRuntimeModules.map((moduleNode) => [moduleNode.id, moduleNode]));
+  const baselineEdges = new Map(baselineRuntimeEdges.map((edge) => [edgeKey(edge), edge]));
+  const currentEdges = new Map(currentRuntimeEdges.map((edge) => [edgeKey(edge), edge]));
 
-  const addedModules = current.modules.filter((moduleNode) => !baselineModules.has(moduleNode.id));
-  const removedModules = baseline.modules.filter((moduleNode) => !currentModules.has(moduleNode.id));
-  const changedModules = current.modules.filter((moduleNode) => {
+  const addedModules = currentRuntimeModules.filter((moduleNode) => !baselineModules.has(moduleNode.id));
+  const removedModules = baselineRuntimeModules.filter((moduleNode) => !currentModules.has(moduleNode.id));
+  const changedModules = currentRuntimeModules.filter((moduleNode) => {
     const before = baselineModules.get(moduleNode.id);
     return before !== undefined && moduleSignature(before) !== moduleSignature(moduleNode);
   });
 
-  const addedEdges = current.dependencies.filter((edge) => !baselineEdges.has(edgeKey(edge)));
-  const removedEdges = baseline.dependencies.filter((edge) => !currentEdges.has(edgeKey(edge)));
+  const addedEdges = currentRuntimeEdges.filter((edge) => !baselineEdges.has(edgeKey(edge)));
+  const removedEdges = baselineRuntimeEdges.filter((edge) => !currentEdges.has(edgeKey(edge)));
   const changedFeatureIds = new Set(
     [...addedModules, ...removedModules, ...changedModules]
       .map((moduleNode) => moduleNode.featureId)
       .filter((featureId): featureId is string => typeof featureId === "string")
   );
-  const changedFeatures = current.featureBlocks.filter((feature) => changedFeatureIds.has(feature.id));
+  const changedFeatures = currentRuntimeFeatures.filter((feature) => changedFeatureIds.has(feature.id));
 
   return {
     baselineCapturedAtIso: baseline.capturedAtIso,

@@ -60,10 +60,11 @@ const visualTargets: VisualTarget[] = [
     requiredTestIds: [
       ...commonTestIds,
       "feature-selector",
+      "runtime-flow-summary",
       "module-composition-panel",
       "internal-dependency-graph",
       "related-external-dependencies",
-      "related-tests"
+      "unclassified-runtime-modules"
     ]
   },
   {
@@ -110,6 +111,9 @@ for (const target of visualTargets) {
     expect(bodyText.startsWith("{")).toBe(false);
     expect(bodyText.startsWith("[")).toBe(false);
     await expect(page.locator("pre")).toHaveCount(0);
+    await expect(page.getByTestId("related-tests")).toHaveCount(0);
+    await expect(page.getByText("Related Tests", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Estimated Test Coverage", { exact: true })).toHaveCount(0);
 
     await expect(page.getByTestId("graph-layout-error")).toHaveCount(0);
     await expect(page.getByTestId("graph-layout-loading")).toHaveCount(0, { timeout: 10000 });
