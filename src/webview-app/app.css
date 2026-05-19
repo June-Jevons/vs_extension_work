@@ -250,8 +250,9 @@ p {
 }
 
 .react-flow-frame {
-  height: 430px;
-  min-height: 430px;
+  position: relative;
+  height: 560px;
+  min-height: 560px;
   overflow: hidden;
   border: 1px solid #344453;
   border-radius: 8px;
@@ -260,7 +261,7 @@ p {
 
 .graph-loading,
 .graph-error {
-  height: 430px;
+  height: 560px;
   display: grid;
   place-items: center;
   border: 1px solid #344453;
@@ -278,11 +279,11 @@ p {
   width: 100%;
   height: 100%;
   display: grid;
-  align-content: center;
-  gap: 4px;
+  align-content: start;
+  gap: 6px;
   border: 1px solid #4b5d6d;
   border-radius: 8px;
-  padding: 9px 12px;
+  padding: 12px 14px;
   background: #16202a;
   color: #e7edf4;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
@@ -292,35 +293,37 @@ p {
 .graph-node span,
 .graph-node small,
 .graph-node em {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .graph-node strong {
   font-size: 13px;
-  white-space: nowrap;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 .graph-node span {
   color: #b9c7d4;
   font-size: 11px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  line-height: 1.25;
+  display: block;
+  line-height: 1.3;
+  white-space: normal;
 }
 
 .graph-node small {
   color: #91a2b0;
   font-size: 10px;
-  white-space: nowrap;
+  line-height: 1.25;
+  white-space: normal;
 }
 
 .graph-node em {
   color: #d7cfa5;
   font-size: 10px;
   font-style: normal;
-  white-space: nowrap;
+  line-height: 1.25;
+  white-space: normal;
 }
 
 .graph-node-feature {
@@ -429,6 +432,180 @@ p {
   border-bottom-color: #334351;
   background: #151c23;
   color: #e7edf4;
+}
+
+.graph-legend {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  width: min(238px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  border: 1px solid #3a4a58;
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(14, 21, 28, 0.92);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+  color: #dce6ee;
+}
+
+.graph-legend > strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.graph-legend-group {
+  display: grid;
+  gap: 5px;
+}
+
+.graph-legend-group + .graph-legend-group {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid #2d3a45;
+}
+
+.graph-legend-group > span {
+  color: #9fb1c2;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.graph-legend-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 18px;
+}
+
+.graph-legend-row b {
+  min-width: 0;
+  overflow: hidden;
+  color: #cfdbe6;
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-legend-swatch {
+  width: 16px;
+  height: 12px;
+  border: 1px solid #4b5d6d;
+  border-radius: 4px;
+}
+
+.graph-legend-node-system {
+  border-color: #78a6d8;
+  background: #172331;
+}
+
+.graph-legend-node-layer {
+  border-color: #7b8b61;
+  background: #1c241b;
+}
+
+.graph-legend-node-feature {
+  border-color: #4b5d6d;
+  background: #182531;
+}
+
+.graph-legend-node-entrypoint {
+  border-color: #78a6d8;
+  background: #152338;
+}
+
+.graph-legend-node-orchestrator {
+  border-color: #c4a455;
+  background: #272213;
+}
+
+.graph-legend-node-service {
+  border-color: #759178;
+  background: #17251d;
+}
+
+.graph-legend-node-adapter {
+  border-color: #ba8871;
+  background: #281d19;
+}
+
+.graph-legend-node-config {
+  border-color: #8db76f;
+  background: #182416;
+}
+
+.graph-legend-node-data {
+  border-color: #a389ce;
+  background: #201b2a;
+}
+
+.graph-legend-node-module {
+  border-color: #4b5d6d;
+  background: #151f24;
+}
+
+.graph-legend-node-summary {
+  border-color: #4b5d6d;
+  background: #221f1c;
+}
+
+.graph-legend-risk-high {
+  border: 2px solid #d45b66;
+  background: transparent;
+}
+
+.graph-legend-risk-medium {
+  border: 2px solid #d3ae53;
+  background: transparent;
+}
+
+.graph-legend-risk-low {
+  border: 2px solid #69c989;
+  background: transparent;
+}
+
+.graph-legend-risk-semantic {
+  border: 2px solid #78a6d8;
+  background: transparent;
+}
+
+.graph-legend-line {
+  width: 17px;
+  height: 0;
+  border-top: 3px solid #90a9ba;
+}
+
+.graph-legend-edge-starts,
+.graph-legend-edge-flows {
+  border-color: #86b7ff;
+}
+
+.graph-legend-edge-calls,
+.graph-legend-edge-uses,
+.graph-legend-edge-imports {
+  border-color: #90a9ba;
+}
+
+.graph-legend-edge-configures {
+  border-color: #a6d98c;
+}
+
+.graph-legend-edge-publishes,
+.graph-legend-edge-subscribes {
+  border-color: #d7a4ff;
+}
+
+.graph-legend-edge-validates {
+  border-color: #f2c56d;
+}
+
+.graph-legend-edge-contains {
+  border-color: #6e8393;
 }
 
 .diagnostics {

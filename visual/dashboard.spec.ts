@@ -131,6 +131,15 @@ for (const target of visualTargets) {
       expect(graphBox?.height ?? 0).toBeGreaterThan(320);
       expect(await canvas.locator(".react-flow__node").count(), `React Flow canvas ${index} should have visible nodes`).toBeGreaterThan(0);
       expect(await canvas.locator(".react-flow__edge").count(), `React Flow canvas ${index} should have visible edges`).toBeGreaterThan(0);
+      await expect(canvas.getByTestId("graph-legend"), `React Flow canvas ${index} should show a graph legend`).toBeVisible();
+      const legendBox = await canvas.getByTestId("graph-legend").boundingBox();
+      expect(legendBox, `React Flow canvas ${index} legend should have a bounding box`).not.toBeNull();
+      expect(legendBox?.width ?? 0).toBeGreaterThan(120);
+      expect(legendBox?.height ?? 0).toBeGreaterThan(80);
+      const verticallyClippedNodes = await canvas.locator(".graph-node").evaluateAll((nodes) => nodes
+        .filter((node) => node.scrollHeight > node.clientHeight + 2)
+        .map((node) => node.textContent?.trim().replace(/\s+/g, " ").slice(0, 120) ?? "unlabelled node"));
+      expect(verticallyClippedNodes, `React Flow canvas ${index} should not vertically clip graph node text`).toEqual([]);
 
       const viewport = canvas.locator(".react-flow__viewport");
       const initialTransform = await viewport.getAttribute("style");

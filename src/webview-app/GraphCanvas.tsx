@@ -13,7 +13,7 @@ import {
   ReactFlowProvider
 } from "@xyflow/react";
 import { layoutGraphWithElk } from "../webview/elkLayout";
-import { GraphViewEdge, GraphViewModel, GraphViewNode } from "../webview/graphViewModel";
+import { GraphNodeKind, GraphSemanticEdgeKind, GraphViewEdge, GraphViewModel, GraphViewNode } from "../webview/graphViewModel";
 import { getCachedLayout, storeCachedLayout } from "./layoutCache";
 
 interface GraphCanvasProps {
@@ -26,6 +26,12 @@ type FlowNodeData = {
 };
 
 type FlowNode = Node<FlowNodeData>;
+
+interface LegendItem<T extends string> {
+  id: T;
+  label: string;
+  detail: string;
+}
 
 const nodeTypes = {
   system: GraphNodeCard,
@@ -132,7 +138,52 @@ function LaidOutGraph({ view }: { view: GraphViewModel }): React.JSX.Element {
         />
         <Controls showInteractive={false} />
       </ReactFlow>
+      <GraphLegend view={view} />
     </div>
+  );
+}
+
+function GraphLegend({ view }: { view: GraphViewModel }): React.JSX.Element {
+  const nodeKinds = new Set(view.nodes.map((node) => node.kind));
+  const edgeKinds = new Set(view.edges.map((edge) => edge.semanticKind).filter((kind): kind is GraphSemanticEdgeKind => Boolean(kind)));
+  const visibleBlockItems = blockLegendItems.filter((item) => nodeKinds.has(item.id));
+  const visibleEdgeItems = edgeLegendItems.filter((item) => edgeKinds.has(item.id));
+
+  return (
+    <aside className="graph-legend" data-testid="graph-legend" aria-label="Graph legend">
+      <strong>Legend</strong>
+      {visibleBlockItems.length > 0 ? (
+        <div className="graph-legend-group">
+          <span>Blocks</span>
+          {visibleBlockItems.map((item) => (
+            <div className="graph-legend-row" key={item.id} title={item.detail}>
+              <i className={`graph-legend-swatch graph-legend-node-${item.id}`} />
+              <b>{item.label}</b>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="graph-legend-group">
+        <span>Outline</span>
+        {riskLegendItems.map((item) => (
+          <div className="graph-legend-row" key={item.id} title={item.detail}>
+            <i className={`graph-legend-swatch graph-legend-risk-${item.id}`} />
+            <b>{item.label}</b>
+          </div>
+        ))}
+      </div>
+      {visibleEdgeItems.length > 0 ? (
+        <div className="graph-legend-group">
+          <span>Lines</span>
+          {visibleEdgeItems.map((item) => (
+            <div className="graph-legend-row" key={item.id} title={item.detail}>
+              <i className={`graph-legend-line graph-legend-edge-${item.id}`} />
+              <b>{item.label}</b>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </aside>
   );
 }
 
@@ -175,6 +226,10 @@ function toFlowNodes(view: GraphViewModel): FlowNode[] {
     },
     width: node.width,
     height: node.height,
+    style: {
+      width: node.width,
+      height: node.height
+    },
     draggable: false
   }));
 }
@@ -240,3 +295,37 @@ function getRiskColor(riskLevel: GraphViewNode["riskLevel"]): string {
       return "#8fa9bc";
   }
 }
+
+const blockLegendItems: Array<LegendItem<GraphNodeKind>> = [
+  { id: "system", label: "System", detail: "Workspace-level runtime system" },
+  { id: "layer", label: "Layer", detail: "Architecture layer or lane" },
+  { id: "feature", label: "Feature", detail: "Runtime feature block" },
+  { id: "entrypoint", label: "Entry", detail: "Runtime input or entrypoint" },
+  { id: "orchestrator", label: "Orchestrator", detail: "Coordination or sequencing node" },
+  { id: "service", label: "Service", detail: "Processing, safety, or support step" },
+  { id: "adapter", label: "Adapter", detail: "External controller or bridge boundary" },
+  { id: "config", label: "Config", detail: "Runtime configuration dependency" },
+  { id: "data", label: "Data", detail: "Data, state, or output node" },
+  { id: "module", label: "Module", detail: "Individual runtime module" },
+  { id: "summary", label: "Summary", detail: "Diagnostic or unclassified summary" }
+];
+
+const riskLegendItems: Array<LegendItem<"high" | "medium" | "low" | "semantic">> = [
+  { id: "high", label: "High risk", detail: "High-risk runtime surface" },
+  { id: "medium", label: "Medium risk", detail: "Medium-risk runtime surface" },
+  { id: "low", label: "Low risk", detail: "Low-risk runtime surface" },
+  { id: "semantic", label: "Role outline", detail: "Used when no risk level is assigned" }
+];
+
+const edgeLegendItems: Array<LegendItem<GraphSemanticEdgeKind>> = [
+  { id: "flows", label: "Flow", detail: "Operation or data flow" },
+  { id: "starts", label: "Starts", detail: "Starts a flow" },
+  { id: "calls", label: "Calls", detail: "Calls another runtime feature" },
+  { id: "uses", label: "Uses", detail: "Uses another runtime feature" },
+  { id: "imports", label: "Imports", detail: "Inferred from import edges" },
+  { id: "configures", label: "Configures", detail: "Configuration dependency" },
+  { id: "publishes", label: "Publishes", detail: "Publishes output or command" },
+  { id: "subscribes", label: "Subscribes", detail: "Consumes published runtime state" },
+  { id: "validates", label: "Validates", detail: "Safety or validation relation" },
+  { id: "contains", label: "Contains", detail: "Hierarchy or grouping relation" }
+];
