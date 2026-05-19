@@ -83,7 +83,9 @@ export class DashboardLauncherViewProvider implements vscode.WebviewViewProvider
 
     const state = this.stateManager.getState();
     const status = state.error
-      ? "Error"
+      ? state.diagnostics.stateSource === "unavailable"
+        ? "No workspace open"
+        : "Error"
       : state.isMockData
         ? "Mock data"
         : "Live workspace data";

@@ -59,12 +59,12 @@ After `package-lock.json` exists and dependencies are not being changed, use `np
 Launch the Extension Development Host against the native Linux ABB_ROS2 workspace from Ubuntu VS Code:
 
 ```bash
-code /home/jevons/ABB_ROS2 \
-  --new-window \
+code --new-window \
   --extensionDevelopmentPath=/home/jevons/vs_extension_work \
   --user-data-dir=/tmp/vscode-lam-user-data \
   --extensions-dir=/tmp/vscode-lam-extensions \
-  --disable-gpu
+  --disable-gpu \
+  --folder-uri file:///home/jevons/ABB_ROS2
 ```
 
 The checked-in F5 configuration opens `/home/jevons/ABB_ROS2`, uses `/tmp/vscode-lam-*` isolation directories, and runs only `npm: compile` as its prelaunch task. Missing dependencies should fail clearly at compile time; the debug task does not run hidden install commands.

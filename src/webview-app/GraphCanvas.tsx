@@ -127,6 +127,7 @@ function LaidOutGraph({ view }: { view: GraphViewModel }): React.JSX.Element {
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable
+        fitViewOptions={{ padding: 0.18 }}
         proOptions={{ hideAttribution: true }}
       >
         <Background color="#30404d" gap={22} />

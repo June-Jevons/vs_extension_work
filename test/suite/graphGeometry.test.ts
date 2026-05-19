@@ -21,6 +21,7 @@ async function run(): Promise<void> {
     assert.ok(Number.isFinite(node.y), `node ${node.id} should have finite y`);
   }
   assertNoNodeOverlap(layout);
+  assertWholeArchitectureLayerColumns(layout);
   assert.strictEqual(
     edgeSegmentCrossesUnrelatedNode(
       { id: "source", label: "Source", detail: "", kind: "module", width: 40, height: 40, x: 0, y: 20 },
@@ -30,6 +31,32 @@ async function run(): Promise<void> {
     true,
     "geometry guard should catch a straight edge through an unrelated node"
   );
+}
+
+function assertWholeArchitectureLayerColumns(view: GraphViewModel): void {
+  const nodesById = new Map(view.nodes.map((node) => [node.id, node]));
+  const layerNodes = view.nodes.filter((node) => node.kind === "layer").sort((left, right) => (left.y ?? 0) - (right.y ?? 0));
+  assert.ok(layerNodes.length > 0, "whole architecture should expose layer lanes");
+
+  for (let index = 1; index < layerNodes.length; index += 1) {
+    const previous = layerNodes[index - 1]!;
+    const current = layerNodes[index]!;
+    assert.ok((current.y ?? 0) > (previous.y ?? 0), `layer ${current.id} should be below ${previous.id}`);
+  }
+
+  for (const edge of view.edges.filter((candidate) => candidate.semanticKind === "contains")) {
+    const source = nodesById.get(edge.source);
+    const target = nodesById.get(edge.target);
+    if (!source || !target) {
+      continue;
+    }
+    if (source.kind === "layer" && target.kind === "feature") {
+      assert.ok((target.x ?? 0) > (source.x ?? 0) + source.width, `feature ${target.id} should sit to the right of layer ${source.id}`);
+    }
+    if (source.kind === "feature" && target.kind !== "feature") {
+      assert.ok((target.x ?? 0) > (source.x ?? 0) + source.width, `role ${target.id} should sit to the right of feature ${source.id}`);
+    }
+  }
 }
 
 function assertNoNodeOverlap(view: GraphViewModel): void {

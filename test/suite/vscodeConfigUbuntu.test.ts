@@ -15,7 +15,8 @@ const configText = [
 
 assert.ok(!forbidden.test(configText), "VS Code debug/task config must not reference Windows, PowerShell, code.cmd, or WSL UNC paths.");
 assert.strictEqual(launchJson.configurations[0]?.preLaunchTask, "npm: compile");
-assert.ok(launchJson.configurations[0]?.args.includes("/home/jevons/ABB_ROS2"), "F5 target must be the native Linux ABB_ROS2 path.");
+assert.ok(launchJson.configurations[0]?.args.includes("file:///home/jevons/ABB_ROS2"), "F5 target must be the native Linux ABB_ROS2 folder URI.");
+assert.ok(!launchJson.configurations[0]?.args.includes("--disable-extensions"), "F5 should not show the all-installed-extensions disabled banner.");
 assert.ok(tasksJson.tasks.every((task) => task.type === "npm"), "F5 build tasks must use npm tasks only.");
 assert.ok(tasksJson.tasks.some((task) => task.label === "npm: compile" && task.script === "compile"));
 assert.ok(tasksJson.tasks.some((task) => task.label === "npm: watch" && task.script === "watch"));

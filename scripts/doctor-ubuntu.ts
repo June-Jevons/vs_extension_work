@@ -167,10 +167,20 @@ function getConfiguredWorkspacePaths(launchJson: LaunchJson): string[] {
     for (const argument of configuration.args ?? []) {
       if (argument.startsWith("/") && !argument.startsWith("--")) {
         paths.push(argument);
+      } else if (argument.startsWith("file:///")) {
+        paths.push(fileUriToPath(argument));
       }
     }
   }
   return paths;
+}
+
+function fileUriToPath(uri: string): string {
+  try {
+    return decodeURIComponent(new URL(uri).pathname);
+  } catch {
+    return uri;
+  }
 }
 
 function hasBuiltAsset(root: string, extension: string): boolean {
