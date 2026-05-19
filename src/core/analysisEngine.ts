@@ -23,6 +23,8 @@ import {
 import { filterArchitectureVisibleDependencies, filterArchitectureVisibleModules } from "../webview/architectureVisibility";
 import { buildGraphViewForTarget } from "../webview/graphViewModel";
 import { AnalysisTimingRecorder, formatAnalysisTimings } from "./analysisTiming";
+import { scanArchitectureFacts } from "./architectureFactsScanner";
+import { getCodexActivity } from "./codexActivityProvider";
 import { FileAnalysisCache } from "./fileAnalysisCache";
 import { buildFeatureBlocks, getFeatureDefinition, inferFeatureFromImportsDetailed, isTestPath, mapFeatureForPath } from "./featureMapper";
 import { mergeChangedFileInputs } from "./liveChangeInputs";
@@ -251,6 +253,21 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     const dirty = changedFiles.length > 0;
     const featureBlocks = timing.measureSync("feature mapping", () => applyChangedFileCounts(buildFeatureBlocks(modules, graph.dependencies), changedFiles));
     const impactedFeatures = buildImpactedFeatures(featureBlocks, modules, changedFiles);
+    const validations = buildValidationStatuses(scan.unreadableFiles);
+    const architectureFacts = await timing.measure("architecture fact scan", () => scanArchitectureFacts(folder, {
+      excludeGlobs,
+      maxFilesToAnalyze,
+      modules,
+      dependencies: graph.dependencies
+    }));
+    const codexActivity = await timing.measure("Codex activity", () => getCodexActivity(folder, {
+      changedFiles,
+      impactedFeatures,
+      validations,
+      changedPaths,
+      deletedPaths,
+      timestampIso: new Date().toISOString()
+    }));
     const mode = refreshRequest.mode ?? getDefaultMode(configuration, dirty);
     const selected = refreshRequest.selectedFeatureId ?? this.state.selectedFeatureId ?? impactedFeatures[0]?.featureId ?? featureBlocks[0]?.id;
 
@@ -270,6 +287,8 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       featureBlocks,
       changedFiles,
       impactedFeatures,
+      codexActivity,
+      architectureFacts,
       risks: buildRiskSummary(changedFiles),
       health: {
         totalPythonFiles: modules.length,
@@ -281,7 +300,7 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
         orphanModuleCount: modules.filter((moduleNode) => moduleNode.isOrphan).length,
         estimatedTestCoverage: 0
       },
-      validations: buildValidationStatuses(scan.unreadableFiles)
+      validations
     };
 
     await this.snapshotStore.saveSnapshot(snapshot);
@@ -325,11 +344,15 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       incremental: !indexDecision.fullRebuild,
       changedPathCount: changedPaths.length + deletedPaths.length,
       workspaceIndexReason: indexDecision.reason,
+      codexActivitySource: codexActivity.source,
+      codexActivityConfidence: codexActivity.confidence,
+      architectureEntityCount: architectureFacts.entities.length,
+      architectureRelationCount: architectureFacts.relations.length,
       lastUpdatedIso: snapshot.capturedAtIso,
       baselineCapturedAtIso: baseline?.capturedAtIso
     };
     logInfo(
-      `final state source=real, mockData=false, pythonFiles=${diagnostics.pythonFileCount}, runtimeModules=${diagnostics.runtimeModuleCount}, featureBlocks=${featureBlocks.length}, unmappedModules=${diagnostics.unmappedModuleCount}, dependencies=${diagnostics.dependencyCount}, graphEdges=${diagnostics.graphEdgeCount}, parsedImports=${diagnostics.parsedImportStatementCount}, unresolvedImports=${diagnostics.unresolvedImportCount}, changedFiles=${diagnostics.changedFileCount}, gitBranch=${diagnostics.gitBranch}, gitStatusSource=${diagnostics.gitStatusSource}`
+      `final state source=real, mockData=false, pythonFiles=${diagnostics.pythonFileCount}, runtimeModules=${diagnostics.runtimeModuleCount}, featureBlocks=${featureBlocks.length}, unmappedModules=${diagnostics.unmappedModuleCount}, dependencies=${diagnostics.dependencyCount}, graphEdges=${diagnostics.graphEdgeCount}, parsedImports=${diagnostics.parsedImportStatementCount}, unresolvedImports=${diagnostics.unresolvedImportCount}, changedFiles=${diagnostics.changedFileCount}, gitBranch=${diagnostics.gitBranch}, gitStatusSource=${diagnostics.gitStatusSource}, codexActivitySource=${diagnostics.codexActivitySource}, codexActivityConfidence=${diagnostics.codexActivityConfidence}, architectureEntities=${diagnostics.architectureEntityCount}, architectureRelations=${diagnostics.architectureRelationCount}`
     );
     logInfo(`analysis timing: ${formatAnalysisTimings(timings)}, cacheHits=${scan.cache.hitCount}, cacheMisses=${scan.cache.missCount}, cacheEntries=${scan.cache.entryCount}, incremental=${diagnostics.incremental}, changedPathCount=${diagnostics.changedPathCount}, workspaceIndexReason=${diagnostics.workspaceIndexReason}`);
 
@@ -385,6 +408,20 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       featureBlocks: [],
       changedFiles: [],
       impactedFeatures: [],
+      codexActivity: {
+        source: "none",
+        confidence: "low",
+        currentIntent: diagnosticReason,
+        modifiedFiles: [],
+        validationStatus: "notRun",
+        updatedAtIso: capturedAtIso,
+        diagnostics: [diagnosticReason]
+      },
+      architectureFacts: {
+        entities: [],
+        relations: [],
+        diagnostics: [diagnosticReason]
+      },
       risks: buildRiskSummary([]),
       health: {
         totalPythonFiles: 0,
@@ -438,6 +475,10 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
         incremental,
         changedPathCount,
         workspaceIndexReason,
+        codexActivitySource: "none",
+        codexActivityConfidence: "low",
+        architectureEntityCount: 0,
+        architectureRelationCount: 0,
         lastUpdatedIso: capturedAtIso,
         baselineCapturedAtIso: undefined
       },

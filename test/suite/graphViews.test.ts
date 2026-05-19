@@ -35,6 +35,11 @@ const whole = buildGraphViewForTarget(state, "wholeArchitecture");
 assert.ok(whole.nodes.some((node) => node.kind === "system"), "Whole Architecture graph should contain a system node");
 assert.ok(whole.nodes.some((node) => node.kind === "layer"), "Whole Architecture graph should contain layer nodes");
 assert.ok(whole.nodes.some((node) => node.kind === "feature"), "Whole Architecture graph should contain feature nodes");
+assert.ok(whole.nodes.some((node) => node.kind === "launch"), "Whole Architecture graph should contain ROS launch facts");
+assert.ok(whole.nodes.some((node) => node.kind === "topic"), "Whole Architecture graph should contain ROS topic facts");
+assert.ok(whole.nodes.some((node) => node.kind === "config"), "Whole Architecture graph should contain config facts");
+assert.ok(whole.edges.some((edge) => edge.semanticKind === "launches"), "Whole Architecture graph should render launches relations");
+assert.ok(whole.edges.some((edge) => edge.semanticKind === "usesConfig"), "Whole Architecture graph should render config usage relations");
 assert.ok(!whole.nodes.some((node) => node.label === "Tests"), "Whole Architecture graph should not contain a Tests feature block");
 
 const motionFocus = buildGraphViewForTarget(state, "featureInternal", "motion-planning");

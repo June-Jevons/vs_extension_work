@@ -42,12 +42,17 @@ const nodeTypes = {
   system: GraphNodeCard,
   feature: GraphNodeCard,
   layer: GraphNodeCard,
+  package: GraphNodeCard,
+  launch: GraphNodeCard,
+  node: GraphNodeCard,
+  topic: GraphNodeCard,
   entrypoint: GraphNodeCard,
   orchestrator: GraphNodeCard,
   service: GraphNodeCard,
   adapter: GraphNodeCard,
   config: GraphNodeCard,
   data: GraphNodeCard,
+  action: GraphNodeCard,
   module: GraphNodeCard,
   summary: GraphNodeCard
 };
@@ -306,6 +311,15 @@ function getEdgeColor(kind: GraphViewEdge["semanticKind"]): string {
     case "publishes":
     case "subscribes":
       return "#d7a4ff";
+    case "launches":
+    case "commandFlow":
+      return "#72d6c9";
+    case "callsService":
+    case "offersService":
+    case "usesAction":
+      return "#ffae7a";
+    case "usesConfig":
+      return "#a6d98c";
     case "validates":
       return "#f2c56d";
     case "contains":
@@ -332,12 +346,17 @@ const blockLegendItems: Array<LegendItem<GraphNodeKind>> = [
   { id: "system", label: "System", detail: "Workspace-level runtime system" },
   { id: "layer", label: "Layer", detail: "Architecture layer or lane" },
   { id: "feature", label: "Feature", detail: "Runtime feature block" },
+  { id: "package", label: "Package", detail: "ROS2 package or dependency" },
+  { id: "launch", label: "Launch", detail: "ROS2 launch entrypoint" },
+  { id: "node", label: "Node", detail: "ROS2 node" },
+  { id: "topic", label: "Topic", detail: "ROS topic" },
   { id: "entrypoint", label: "Entry", detail: "Runtime input or entrypoint" },
   { id: "orchestrator", label: "Orchestrator", detail: "Coordination or sequencing node" },
   { id: "service", label: "Service", detail: "Processing, safety, or support step" },
   { id: "adapter", label: "Adapter", detail: "External controller or bridge boundary" },
   { id: "config", label: "Config", detail: "Runtime configuration dependency" },
   { id: "data", label: "Data", detail: "Data, state, or output node" },
+  { id: "action", label: "Action", detail: "ROS action" },
   { id: "module", label: "Module", detail: "Individual runtime module" },
   { id: "summary", label: "Summary", detail: "Diagnostic or unclassified summary" }
 ];
@@ -355,9 +374,15 @@ const edgeLegendItems: Array<LegendItem<GraphSemanticEdgeKind>> = [
   { id: "calls", label: "Calls", detail: "Calls another runtime feature" },
   { id: "uses", label: "Uses", detail: "Uses another runtime feature" },
   { id: "imports", label: "Imports", detail: "Inferred from import edges" },
+  { id: "launches", label: "Launches", detail: "Launch file starts a node" },
   { id: "configures", label: "Configures", detail: "Configuration dependency" },
   { id: "publishes", label: "Publishes", detail: "Publishes output or command" },
   { id: "subscribes", label: "Subscribes", detail: "Consumes published runtime state" },
+  { id: "callsService", label: "Calls Service", detail: "Calls a ROS service" },
+  { id: "offersService", label: "Offers Service", detail: "Provides a ROS service" },
+  { id: "usesAction", label: "Uses Action", detail: "Uses a ROS action" },
+  { id: "usesConfig", label: "Uses Config", detail: "Uses a config file or parameter set" },
+  { id: "commandFlow", label: "Command Flow", detail: "Command flow inferred from runtime facts" },
   { id: "validates", label: "Validates", detail: "Safety or validation relation" },
   { id: "contains", label: "Contains", detail: "Hierarchy or grouping relation" }
 ];

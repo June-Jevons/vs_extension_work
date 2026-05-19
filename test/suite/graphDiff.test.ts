@@ -50,6 +50,20 @@ function snapshot(
     ],
     changedFiles: [],
     impactedFeatures: [],
+    codexActivity: {
+      source: "none",
+      confidence: "low",
+      currentIntent: "No activity in graph diff fixture.",
+      modifiedFiles: [],
+      validationStatus: "notRun",
+      updatedAtIso: capturedAtIso,
+      diagnostics: []
+    },
+    architectureFacts: {
+      entities: [],
+      relations: [],
+      diagnostics: []
+    },
     risks: [],
     health: {
       totalPythonFiles: moduleIds.length,

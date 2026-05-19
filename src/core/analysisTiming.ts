@@ -8,6 +8,8 @@ export type AnalysisTimingPhase =
   | "feature mapping"
   | "risk scoring"
   | "Git status"
+  | "architecture fact scan"
+  | "Codex activity"
   | "graph view model generation"
   | "ELK layout"
   | "cache write"
@@ -69,6 +71,8 @@ const phaseOrder: AnalysisTimingPhase[] = [
   "feature mapping",
   "risk scoring",
   "Git status",
+  "architecture fact scan",
+  "Codex activity",
   "graph view model generation",
   "ELK layout",
   "cache write",

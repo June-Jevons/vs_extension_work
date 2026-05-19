@@ -33,12 +33,17 @@ const visualTargets: VisualTarget[] = [
     requiredTestIds: [
       ...commonTestIds,
       "current-change-area",
+      "codex-active-feature",
+      "modified-runtime-flow",
+      "risk-impact",
       "risk-card-high",
       "risk-card-medium",
       "risk-card-low",
       "architecture-impact-graph",
       "changed-files-table",
       "dependency-graph",
+      "suggested-validation",
+      "before-after-structure",
       "validation-status-row"
     ]
   },

@@ -1,4 +1,5 @@
 export type RiskLevel = "low" | "medium" | "high";
+export type ConfidenceLevel = "low" | "medium" | "high";
 
 export type ClassificationReasonCategory =
   | "path-pattern-match"
@@ -83,6 +84,10 @@ export interface WorkspaceDiagnostics {
   incremental: boolean;
   changedPathCount: number;
   workspaceIndexReason: string;
+  codexActivitySource: CodexActivitySource;
+  codexActivityConfidence: ConfidenceLevel;
+  architectureEntityCount: number;
+  architectureRelationCount: number;
   lastUpdatedIso: string;
   baselineCapturedAtIso?: string;
 }
@@ -98,6 +103,8 @@ export interface WorkspaceSnapshot {
   featureBlocks: FeatureBlock[];
   changedFiles: ChangedFile[];
   impactedFeatures: ImpactedFeature[];
+  codexActivity: CodexActivity;
+  architectureFacts: ArchitectureFacts;
   risks: RiskItem[];
   health: ArchitectureHealth;
   validations: ValidationStatus[];
@@ -123,7 +130,7 @@ export interface DependencyEdge {
   from: string;
   to: string;
   kind: "import" | "config" | "test" | "entrypoint" | "unknown";
-  confidence: "low" | "medium" | "high";
+  confidence: ConfidenceLevel;
 }
 
 export interface FeatureBlock {
@@ -163,6 +170,70 @@ export interface RiskItem {
   level: RiskLevel;
   count: number;
   detail: string;
+}
+
+export type CodexActivitySource =
+  | "metadata"
+  | "worklog"
+  | "git-watch"
+  | "none";
+
+export interface CodexActivity {
+  source: CodexActivitySource;
+  confidence: ConfidenceLevel;
+  activeFeature?: string;
+  currentIntent: string;
+  modifiedFiles: string[];
+  validationStatus: ValidationStatus["state"];
+  updatedAtIso: string;
+  diagnostics: string[];
+}
+
+export type ArchitectureEntityKind =
+  | "package"
+  | "launch"
+  | "node"
+  | "topic"
+  | "service"
+  | "action"
+  | "config"
+  | "module";
+
+export type ArchitectureRelationKind =
+  | "launches"
+  | "publishes"
+  | "subscribes"
+  | "callsService"
+  | "offersService"
+  | "usesAction"
+  | "usesConfig"
+  | "commandFlow"
+  | "imports";
+
+export interface ArchitectureFactEntity {
+  id: string;
+  kind: ArchitectureEntityKind;
+  label: string;
+  detail: string;
+  path?: string;
+  featureId?: string;
+  confidence: ConfidenceLevel;
+  metadata?: Record<string, string | number | boolean | string[]>;
+}
+
+export interface ArchitectureFactRelation {
+  id: string;
+  source: string;
+  target: string;
+  kind: ArchitectureRelationKind;
+  confidence: ConfidenceLevel;
+  evidence: string;
+}
+
+export interface ArchitectureFacts {
+  entities: ArchitectureFactEntity[];
+  relations: ArchitectureFactRelation[];
+  diagnostics: string[];
 }
 
 export interface ArchitectureHealth {
@@ -222,7 +293,7 @@ export function isDashboardMode(value: unknown): value is DashboardMode {
 export function getModeLabel(mode: DashboardMode): string {
   switch (mode) {
     case "liveChanges":
-      return "Live Changes";
+      return "Codex Review";
     case "wholeArchitecture":
       return "Whole Architecture";
     case "featureFocus":

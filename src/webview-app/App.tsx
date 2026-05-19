@@ -176,6 +176,8 @@ function Dashboard({ state }: { state: DashboardState }): React.JSX.Element {
           <Diagnostic label="Incremental" value={state.diagnostics.incremental ? "true" : "false"} />
           <Diagnostic label="Changed paths" value={state.diagnostics.changedPathCount} />
           <Diagnostic label="Index reason" value={state.diagnostics.workspaceIndexReason} />
+          <Diagnostic label="Codex activity" value={`${state.diagnostics.codexActivitySource} (${state.diagnostics.codexActivityConfidence})`} />
+          <Diagnostic label="Architecture facts" value={`${state.diagnostics.architectureEntityCount} entities / ${state.diagnostics.architectureRelationCount} relations`} />
           <Diagnostic label="Total refresh" value={`${state.diagnostics.analysisTimings.find((entry) => entry.phase === "total refresh")?.durationMs ?? 0} ms`} />
           <Diagnostic label="Unresolved imports" value={state.diagnostics.unresolvedImportCount} />
           <Diagnostic label="Updated" value={state.diagnostics.lastUpdatedIso} />
@@ -191,6 +193,8 @@ function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
   const risksByLevel = new Map(state.snapshot.risks.map((risk) => [risk.level, risk]));
   const impactView = useMemo(() => buildGraphViewForTarget(state, "liveImpact"), [state]);
   const dependencyView = useMemo(() => buildGraphViewForTarget(state, "liveDependency"), [state]);
+  const activeFeature = state.snapshot.featureBlocks.find((feature) => feature.id === state.snapshot.codexActivity.activeFeature);
+  const modifiedRuntimeRelations = getModifiedRuntimeRelations(state);
 
   return (
     <div className="two-column">
@@ -203,7 +207,26 @@ function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
           ))}
         </ul>
       </section>
-      <div className="risk-grid" aria-label="Risk summary">
+      <section data-testid="codex-active-feature">
+        <h2>Codex Active Feature</h2>
+        <p>{activeFeature?.label ?? state.snapshot.codexActivity.activeFeature ?? "No active feature detected."}</p>
+        <p>{state.snapshot.codexActivity.currentIntent}</p>
+        <ul className="plain-list">
+          <li>Source: {state.snapshot.codexActivity.source} ({state.snapshot.codexActivity.confidence})</li>
+          <li>Validation: {state.snapshot.codexActivity.validationStatus}</li>
+        </ul>
+      </section>
+      <section data-testid="modified-runtime-flow">
+        <h2>Modified Runtime Flow</h2>
+        <p>{state.snapshot.architectureFacts.relations.length} ROS/config/runtime relations detected from static facts.</p>
+        <ul className="plain-list">
+          {modifiedRuntimeRelations.slice(0, 6).map((relation) => (
+            <li key={relation.id}>{relation.kind}: {relation.evidence}</li>
+          ))}
+          {modifiedRuntimeRelations.length === 0 ? <li>No changed runtime fact relation matched the current files yet.</li> : null}
+        </ul>
+      </section>
+      <div className="risk-grid" aria-label="Risk summary" data-testid="risk-impact">
         {(["high", "medium", "low"] as const).map((level) => {
           const risk = risksByLevel.get(level);
           return (
@@ -218,23 +241,51 @@ function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
       <section data-testid="changed-files-table">
         <h2>Changed Files</h2>
         <ul className="plain-list">
-          {state.snapshot.changedFiles.slice(0, 8).map((file) => (
+          {(state.snapshot.codexActivity.modifiedFiles.length > 0
+            ? state.snapshot.codexActivity.modifiedFiles.map((path) => ({ path, status: state.snapshot.changedFiles.find((file) => file.path === path)?.status ?? "modified" }))
+            : state.snapshot.changedFiles).slice(0, 8).map((file) => (
             <li key={`${file.status}:${file.path}`}>{file.status} - {file.path}</li>
           ))}
         </ul>
       </section>
-      <section data-testid="validation-status-row">
-        <h2>Validation Status</h2>
+      <section data-testid="suggested-validation">
+        <h2>Suggested Validation</h2>
         <ul className="plain-list">
           {state.snapshot.validations.slice(0, 6).map((validation) => (
             <li key={validation.id}>{validation.label}: {validation.state}</li>
           ))}
         </ul>
       </section>
+      <section data-testid="validation-status-row">
+        <h2>Validation Status</h2>
+        <p>{state.snapshot.codexActivity.validationStatus}</p>
+      </section>
+      <section data-testid="before-after-structure">
+        <h2>Before/After Structure</h2>
+        <p>{state.baselineDiff ? `${state.baselineDiff.changedModules.length} modules and ${state.baselineDiff.addedEdges.length + state.baselineDiff.removedEdges.length} edges changed since baseline.` : "Capture a baseline to compare structure before and after this Codex activity."}</p>
+      </section>
       <GraphCanvas testId="architecture-impact-graph" view={impactView} />
       <GraphCanvas testId="dependency-graph" view={dependencyView} />
     </div>
   );
+}
+
+function getModifiedRuntimeRelations(state: DashboardState): DashboardState["snapshot"]["architectureFacts"]["relations"] {
+  const modifiedPaths = new Set([
+    ...state.snapshot.codexActivity.modifiedFiles,
+    ...state.snapshot.changedFiles.map((file) => file.path)
+  ]);
+  const byEntityId = new Map(state.snapshot.architectureFacts.entities.map((entity) => [entity.id, entity]));
+  return state.snapshot.architectureFacts.relations.filter((relation) => {
+    const source = byEntityId.get(relation.source);
+    const target = byEntityId.get(relation.target);
+    return [source?.path, target?.path, relation.evidence].some((value) => {
+      if (!value) {
+        return false;
+      }
+      return [...modifiedPaths].some((path) => value.includes(path) || path.includes(value));
+    });
+  });
 }
 
 function WholeArchitecture({ state }: { state: DashboardState }): React.JSX.Element {

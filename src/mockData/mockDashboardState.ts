@@ -1,6 +1,8 @@
 import {
+  ArchitectureFacts,
   BaselineDiff,
   ChangedFile,
+  CodexActivity,
   DashboardMode,
   DashboardState,
   DependencyEdge,
@@ -293,6 +295,96 @@ const validations: ValidationStatus[] = [
   }
 ];
 
+const codexActivity: CodexActivity = {
+  source: "metadata",
+  confidence: "high",
+  activeFeature: "config-system",
+  currentIntent: "Harden runtime config and launcher environment handling for ROS startup.",
+  modifiedFiles: changedFiles.map((file) => file.path),
+  validationStatus: "running",
+  updatedAtIso: capturedAtIso,
+  diagnostics: [
+    "Mock Codex metadata detected.",
+    "Active feature selected from changed runtime config files."
+  ]
+};
+
+const architectureFacts: ArchitectureFacts = {
+  entities: [
+    {
+      id: "package:abb_bringup",
+      kind: "package",
+      label: "abb_bringup",
+      detail: "ROS2 bringup package",
+      path: "src/abb_robot/abb_ros2/abb_bringup/package.xml",
+      confidence: "high"
+    },
+    {
+      id: "launch:abb_control",
+      kind: "launch",
+      label: "abb_control.launch.py",
+      detail: "Launches controller manager, robot state publisher, RViz, and spawners.",
+      path: "src/abb_robot/abb_ros2/abb_bringup/launch/abb_control.launch.py",
+      featureId: "ros-bridge-runtime",
+      confidence: "high"
+    },
+    {
+      id: "node:controller_manager:ros2_control_node",
+      kind: "node",
+      label: "controller_manager/ros2_control_node",
+      detail: "ROS control runtime node",
+      featureId: "robot-io-layer",
+      confidence: "high"
+    },
+    {
+      id: "topic:/joint_states",
+      kind: "topic",
+      label: "/joint_states",
+      detail: "Primary robot state topic",
+      featureId: "ros-bridge-runtime",
+      confidence: "high"
+    },
+    {
+      id: "config:abb_controllers.yaml",
+      kind: "config",
+      label: "abb_controllers.yaml",
+      detail: "Controller manager YAML configuration",
+      path: "src/abb_robot/abb_ros2/abb_bringup/config/abb_controllers.yaml",
+      featureId: "config-system",
+      confidence: "medium"
+    }
+  ],
+  relations: [
+    {
+      id: "launches:launch:abb_control->node:controller_manager:ros2_control_node",
+      source: "launch:abb_control",
+      target: "node:controller_manager:ros2_control_node",
+      kind: "launches",
+      confidence: "high",
+      evidence: "Node(package='controller_manager', executable='ros2_control_node')"
+    },
+    {
+      id: "publishes:node:controller_manager:ros2_control_node->topic:/joint_states",
+      source: "node:controller_manager:ros2_control_node",
+      target: "topic:/joint_states",
+      kind: "publishes",
+      confidence: "medium",
+      evidence: "Controller manager provides joint state flow through launch remapping."
+    },
+    {
+      id: "usesConfig:launch:abb_control->config:abb_controllers.yaml",
+      source: "launch:abb_control",
+      target: "config:abb_controllers.yaml",
+      kind: "usesConfig",
+      confidence: "medium",
+      evidence: "controllers_file launch argument defaults to abb_controllers.yaml"
+    }
+  ],
+  diagnostics: [
+    "Mock ROS fact graph contains package, launch, node, topic, and config entities."
+  ]
+};
+
 const baselineDiff: BaselineDiff = {
   baselineCapturedAtIso: "2024-05-15T09:00:00+08:00",
   currentCapturedAtIso: capturedAtIso,
@@ -379,6 +471,10 @@ export function createMockDashboardState(
       incremental: false,
       changedPathCount: 0,
       workspaceIndexReason: "standalone mock state",
+      codexActivitySource: snapshot.codexActivity.source,
+      codexActivityConfidence: snapshot.codexActivity.confidence,
+      architectureEntityCount: snapshot.architectureFacts.entities.length,
+      architectureRelationCount: snapshot.architectureFacts.relations.length,
       lastUpdatedIso: capturedAtIso,
       baselineCapturedAtIso: baselineDiff.baselineCapturedAtIso
     },
@@ -437,6 +533,8 @@ export function createMockSnapshot(): WorkspaceSnapshot {
         reason: "Runtime launch consumes process manager state."
       }
     ],
+    codexActivity,
+    architectureFacts,
     risks: [
       {
         id: "high",

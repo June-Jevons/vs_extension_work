@@ -1,6 +1,6 @@
 {
   "node_modules/elkjs/lib/elk.bundled.js": {
-    "file": "assets/elk.bundled-DDTaRx-W.js",
+    "file": "assets/elk.bundled-QoH68wqo.js",
     "name": "elk.bundled",
     "src": "node_modules/elkjs/lib/elk.bundled.js",
     "isDynamicEntry": true,
@@ -9,7 +9,7 @@
     ]
   },
   "src/webview-app/main.tsx": {
-    "file": "assets/main-D-O9Rrab.js",
+    "file": "assets/main-D-9Bt8hP.js",
     "name": "main",
     "src": "src/webview-app/main.tsx",
     "isEntry": true,
@@ -17,7 +17,7 @@
       "node_modules/elkjs/lib/elk.bundled.js"
     ],
     "css": [
-      "assets/main-Hmzvb1Nx.css"
+      "assets/main-SpI6A94N.css"
     ]
   }
 }

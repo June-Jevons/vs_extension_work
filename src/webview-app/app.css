@@ -369,6 +369,26 @@ p {
   background: #1c241b;
 }
 
+.graph-node-package {
+  border-color: #708da8;
+  background: #17222b;
+}
+
+.graph-node-launch {
+  border-color: #72d6c9;
+  background: #112826;
+}
+
+.graph-node-node {
+  border-color: #72a9d6;
+  background: #142431;
+}
+
+.graph-node-topic {
+  border-color: #d7a4ff;
+  background: #21182b;
+}
+
 .graph-node-entrypoint {
   border-color: #78a6d8;
   background: #152338;
@@ -397,6 +417,11 @@ p {
 .graph-node-data {
   border-color: #a389ce;
   background: #201b2a;
+}
+
+.graph-node-action {
+  border-color: #ffae7a;
+  background: #2a1d15;
 }
 
 .graph-node-module {
@@ -543,6 +568,26 @@ p {
   background: #182531;
 }
 
+.graph-legend-node-package {
+  border-color: #708da8;
+  background: #17222b;
+}
+
+.graph-legend-node-launch {
+  border-color: #72d6c9;
+  background: #112826;
+}
+
+.graph-legend-node-node {
+  border-color: #72a9d6;
+  background: #142431;
+}
+
+.graph-legend-node-topic {
+  border-color: #d7a4ff;
+  background: #21182b;
+}
+
 .graph-legend-node-entrypoint {
   border-color: #78a6d8;
   background: #152338;
@@ -571,6 +616,11 @@ p {
 .graph-legend-node-data {
   border-color: #a389ce;
   background: #201b2a;
+}
+
+.graph-legend-node-action {
+  border-color: #ffae7a;
+  background: #2a1d15;
 }
 
 .graph-legend-node-module {
@@ -624,9 +674,24 @@ p {
   border-color: #a6d98c;
 }
 
+.graph-legend-edge-launches,
+.graph-legend-edge-commandFlow {
+  border-color: #72d6c9;
+}
+
 .graph-legend-edge-publishes,
 .graph-legend-edge-subscribes {
   border-color: #d7a4ff;
+}
+
+.graph-legend-edge-callsService,
+.graph-legend-edge-offersService,
+.graph-legend-edge-usesAction {
+  border-color: #ffae7a;
+}
+
+.graph-legend-edge-usesConfig {
+  border-color: #a6d98c;
 }
 
 .graph-legend-edge-validates {

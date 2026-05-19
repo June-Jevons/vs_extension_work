@@ -23,10 +23,15 @@ const requiredReactTestIds = [
   "dashboard-root",
   "workspace-diagnostics-panel",
   "current-change-area",
+  "codex-active-feature",
+  "modified-runtime-flow",
+  "risk-impact",
   "architecture-impact-graph",
   "changed-files-table",
   "dependency-graph",
+  "suggested-validation",
   "validation-status-row",
+  "before-after-structure",
   "whole-architecture-diagram",
   "architecture-overview-cards",
   "architecture-health-cards",
@@ -176,6 +181,48 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
           reason: "Feature contains changed files."
         }
       ],
+      codexActivity: {
+        source: "git-watch",
+        confidence: "low",
+        activeFeature: "motion-planning",
+        currentIntent: "Reviewing Motion Planning changes and their runtime impact.",
+        modifiedFiles: ["src/motion/box_motion.py"],
+        validationStatus: "notRun",
+        updatedAtIso: capturedAtIso,
+        diagnostics: ["Fixture activity."]
+      },
+      architectureFacts: {
+        entities: [
+          {
+            id: "node:integrated_gui_moveit_client",
+            kind: "node",
+            label: "integrated_gui_moveit_client",
+            detail: "MoveIt client node",
+            path: "src/motion/box_motion.py",
+            featureId: "motion-planning",
+            confidence: "high"
+          },
+          {
+            id: "service:/plan_kinematic_path",
+            kind: "service",
+            label: "/plan_kinematic_path",
+            detail: "MoveIt planning service",
+            featureId: "motion-planning",
+            confidence: "high"
+          }
+        ],
+        relations: [
+          {
+            id: "callsService:node:integrated_gui_moveit_client->service:/plan_kinematic_path",
+            source: "node:integrated_gui_moveit_client",
+            target: "service:/plan_kinematic_path",
+            kind: "callsService",
+            confidence: "high",
+            evidence: "create_client(GetMotionPlan, /plan_kinematic_path) in src/motion/box_motion.py"
+          }
+        ],
+        diagnostics: []
+      },
       risks,
       health: {
         totalPythonFiles: modules.length,
@@ -224,6 +271,10 @@ function createRealDashboardState(mode: DashboardMode, selectedFeatureId = "moti
       incremental: false,
       changedPathCount: 0,
       workspaceIndexReason: "fixture full scan",
+      codexActivitySource: "git-watch",
+      codexActivityConfidence: "low",
+      architectureEntityCount: 2,
+      architectureRelationCount: 1,
       lastUpdatedIso: capturedAtIso
     },
     isMockData: false,

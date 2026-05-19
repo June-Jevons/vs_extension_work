@@ -1,5 +1,7 @@
 import "./extension.test";
+import "./architectureFactsScanner.test";
 import "./analysisTiming.test";
+import "./codexActivityProvider.test";
 import "./doctorUbuntu.test";
 import "./featureMapper.test";
 import "./fileAnalysisCache.test";

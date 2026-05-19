@@ -1,4 +1,6 @@
 import {
+  ArchitectureFactEntity,
+  ArchitectureRelationKind,
   DashboardState,
   DependencyEdge,
   FeatureBlock,
@@ -31,12 +33,17 @@ export type GraphNodeKind =
   | "system"
   | "feature"
   | "layer"
+  | "package"
+  | "launch"
+  | "node"
+  | "topic"
   | "entrypoint"
   | "orchestrator"
   | "service"
   | "adapter"
   | "config"
   | "data"
+  | "action"
   | "module"
   | "summary";
 
@@ -50,7 +57,13 @@ export type GraphSemanticEdgeKind =
   | "validates"
   | "contains"
   | "flows"
-  | "imports";
+  | "imports"
+  | "launches"
+  | "callsService"
+  | "offersService"
+  | "usesAction"
+  | "usesConfig"
+  | "commandFlow";
 
 export interface GraphViewModel {
   id: string;
@@ -85,7 +98,7 @@ export interface GraphViewEdge {
   source: string;
   target: string;
   label: string;
-  kind: DependencyEdge["kind"] | "feature" | "diff";
+  kind: DependencyEdge["kind"] | "feature" | "diff" | "architecture";
   semanticKind?: GraphSemanticEdgeKind;
   confidence?: "low" | "medium" | "high";
 }
@@ -174,6 +187,7 @@ export function buildWholeArchitectureSemanticGraph(state: DashboardState): Grap
 
   addSemanticArchitectureEdges(edges, visible);
   addImportInferredFeatureEdges(edges, visible);
+  addArchitectureFactGraph(nodes, edges, state);
 
   return ensureNonEmpty(pruneDanglingEdges({
     id: "whole-architecture",
@@ -183,6 +197,127 @@ export function buildWholeArchitectureSemanticGraph(state: DashboardState): Grap
     nodes,
     edges
   }));
+}
+
+function addArchitectureFactGraph(nodes: GraphViewNode[], edges: GraphViewEdge[], state: DashboardState): void {
+  const facts = state.snapshot.architectureFacts;
+  if (facts.entities.length === 0) {
+    return;
+  }
+
+  const factEntities = selectArchitectureFactEntities(facts.entities);
+  if (factEntities.length === 0) {
+    return;
+  }
+
+  const layerId = "layer:ros-runtime-facts";
+  if (!nodes.some((node) => node.id === layerId)) {
+    nodes.push({
+      id: layerId,
+      label: "ROS Runtime Facts",
+      detail: `${factEntities.length} package, launch, node, topic, service, action, and config facts`,
+      kind: "layer",
+      width: 300,
+      height: 122,
+      role: "Evidence-based ROS2 runtime graph",
+      moduleCount: factEntities.length,
+      badges: ["facts"]
+    });
+    edges.push(edge("contains", "system:workspace", layerId, "contains", "feature", "high"));
+  }
+
+  const entityIds = new Set<string>();
+  for (const entity of factEntities) {
+    const graphNode = architectureEntityToNode(entity);
+    entityIds.add(entity.id);
+    nodes.push(graphNode);
+    edges.push(edge("contains", layerId, graphNode.id, "contains", "architecture", entity.confidence));
+  }
+
+  for (const relation of facts.relations) {
+    if (!entityIds.has(relation.source) || !entityIds.has(relation.target)) {
+      continue;
+    }
+    edges.push({
+      id: `architecture:${relation.id}`,
+      source: architectureNodeId(relation.source),
+      target: architectureNodeId(relation.target),
+      label: relation.kind,
+      kind: "architecture",
+      semanticKind: relationKindToSemanticKind(relation.kind),
+      confidence: relation.confidence
+    });
+  }
+}
+
+function selectArchitectureFactEntities(entities: readonly ArchitectureFactEntity[]): ArchitectureFactEntity[] {
+  const packages = entities.filter((entity) => entity.kind === "package").slice(0, 24);
+  const runtimeFacts = entities.filter((entity) => entity.kind !== "package" && entity.kind !== "module").slice(0, 96);
+  return [...packages, ...runtimeFacts];
+}
+
+function architectureEntityToNode(entity: ArchitectureFactEntity): GraphViewNode {
+  return {
+    id: architectureNodeId(entity.id),
+    label: entity.label,
+    detail: entity.detail,
+    kind: architectureEntityKindToNodeKind(entity.kind),
+    width: entity.kind === "launch" ? 340 : entity.kind === "package" ? 260 : 300,
+    height: entity.kind === "launch" ? 176 : entity.kind === "package" || entity.kind === "config" ? 150 : 138,
+    role: entity.kind,
+    layer: "ROS Runtime Facts",
+    moduleCount: 1,
+    badges: [entity.confidence, entity.kind],
+    primaryPaths: entity.path ? [entity.path] : undefined
+  };
+}
+
+function architectureNodeId(entityId: string): string {
+  return `fact:${entityId}`;
+}
+
+function architectureEntityKindToNodeKind(kind: ArchitectureFactEntity["kind"]): GraphNodeKind {
+  switch (kind) {
+    case "package":
+      return "package";
+    case "launch":
+      return "launch";
+    case "node":
+      return "node";
+    case "topic":
+      return "topic";
+    case "action":
+      return "action";
+    case "service":
+      return "service";
+    case "config":
+      return "config";
+    case "module":
+      return "module";
+  }
+}
+
+function relationKindToSemanticKind(kind: ArchitectureRelationKind): GraphSemanticEdgeKind {
+  switch (kind) {
+    case "launches":
+      return "launches";
+    case "publishes":
+      return "publishes";
+    case "subscribes":
+      return "subscribes";
+    case "callsService":
+      return "callsService";
+    case "offersService":
+      return "offersService";
+    case "usesAction":
+      return "usesAction";
+    case "usesConfig":
+      return "usesConfig";
+    case "commandFlow":
+      return "commandFlow";
+    case "imports":
+      return "imports";
+  }
 }
 
 export function buildFeatureFocusSemanticGraph(
