@@ -10,6 +10,7 @@ import "./graphViews.test";
 import "./importResolverIndex.test";
 import "./importParser.test";
 import "./legacyRendererRemoval.test";
+import "./liveChangeInputs.test";
 import "./riskScorer.test";
 import "./scanPathFilter.test";
 import "./scannerBackendSelection.test";

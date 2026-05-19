@@ -24,6 +24,7 @@ import { buildGraphViewForTarget } from "../webview/graphViewModel";
 import { AnalysisTimingRecorder, formatAnalysisTimings } from "./analysisTiming";
 import { FileAnalysisCache } from "./fileAnalysisCache";
 import { buildFeatureBlocks, getFeatureDefinition, inferFeatureFromImportsDetailed, mapFeatureForPath } from "./featureMapper";
+import { mergeChangedFileInputs } from "./liveChangeInputs";
 import { buildRiskSummary, scoreChangedFileWithReason, scoreModuleRisk } from "./riskScorer";
 import { scanWorkspace } from "./workspaceScanner";
 import { decideWorkspaceIndexRefresh, WorkspaceIndex } from "./workspaceIndex";
@@ -240,7 +241,7 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
       };
     }));
     const gitStatus = await timing.measure("Git status", () => getGitStatus(folder));
-    const changedFiles = buildChangedFiles(gitStatus.changedFiles, modules);
+    const changedFiles = buildChangedFiles(mergeChangedFileInputs(gitStatus.changedFiles, changedPaths, deletedPaths), modules);
     const dirty = changedFiles.length > 0;
     const featureBlocks = timing.measureSync("feature mapping", () => applyChangedFileCounts(buildFeatureBlocks(modules, graph.dependencies), changedFiles));
     const impactedFeatures = buildImpactedFeatures(featureBlocks, modules, changedFiles);

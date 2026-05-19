@@ -18,22 +18,26 @@ interface GitApi {
 }
 
 interface GitRepository {
-  rootUri: vscode.Uri;
+  rootUri?: vscode.Uri;
+  status?: () => Promise<void>;
   state: {
     HEAD?: {
       name?: string;
       ahead?: number;
       behind?: number;
     };
-    workingTreeChanges: GitResourceState[];
-    indexChanges: GitResourceState[];
-    untrackedChanges: GitResourceState[];
+    workingTreeChanges?: GitResourceState[];
+    indexChanges?: GitResourceState[];
+    untrackedChanges?: GitResourceState[];
+    mergeChanges?: GitResourceState[];
   };
 }
 
 interface GitResourceState {
-  resourceUri: vscode.Uri;
+  resourceUri?: vscode.Uri;
+  uri?: vscode.Uri;
   type?: number;
+  status?: number;
 }
 
 export async function getGitStatus(folder: vscode.WorkspaceFolder): Promise<GitStatusResult> {
@@ -55,22 +59,43 @@ async function getGitStatusFromVsCodeApi(folder: vscode.WorkspaceFolder): Promis
     return gitUnavailable(`VS Code Git extension activation failed: ${error instanceof Error ? error.message : "unknown error"}`);
   }
 
-  const api = gitExtension.getAPI(1);
-  const repository = api.repositories.find((candidate) => isSameOrParentPath(candidate.rootUri.fsPath, folder.uri.fsPath));
+  let api: GitApi;
+  try {
+    api = gitExtension.getAPI(1);
+  } catch (error: unknown) {
+    return gitUnavailable(`VS Code Git API lookup failed: ${error instanceof Error ? error.message : "unknown error"}`);
+  }
+  if (!api || !Array.isArray(api.repositories)) {
+    return gitUnavailable("VS Code Git API did not expose repository state.");
+  }
+
+  const repositories = Array.isArray(api.repositories) ? api.repositories : [];
+  const repository = repositories.find((candidate) => hasFsPath(candidate.rootUri) && isSameOrParentPath(candidate.rootUri.fsPath, folder.uri.fsPath));
   if (!repository) {
     return gitUnavailable("No VS Code Git repository matches the workspace folder.");
   }
+  try {
+    await repository.status?.();
+  } catch (error: unknown) {
+    return gitUnavailable(`VS Code Git repository status refresh failed: ${error instanceof Error ? error.message : "unknown error"}`);
+  }
 
   const changes = [
-    ...repository.state.workingTreeChanges,
-    ...repository.state.indexChanges,
-    ...repository.state.untrackedChanges
+    ...(repository.state.workingTreeChanges ?? []),
+    ...(repository.state.indexChanges ?? []),
+    ...(repository.state.untrackedChanges ?? []),
+    ...(repository.state.mergeChanges ?? [])
   ];
   const changedFiles = dedupeChangedFiles(changes
-    .filter((change) => isSameOrParentPath(folder.uri.fsPath, change.resourceUri.fsPath))
     .map((change) => ({
-      path: normalizeRelativePath(folder.uri, change.resourceUri),
-      status: mapGitApiStatus(change.type)
+      uri: getChangeUri(change),
+      status: getChangeStatus(change)
+    }))
+    .filter(hasChangeUri)
+    .filter((change) => isSameOrParentPath(folder.uri.fsPath, change.uri.fsPath))
+    .map((change) => ({
+      path: normalizeRelativePath(folder.uri, change.uri),
+      status: mapGitApiStatus(change.status)
     })));
 
   return {
@@ -145,6 +170,22 @@ function gitUnavailable(unavailableReason: string): GitStatusResult {
     changedFiles: [],
     unavailableReason
   };
+}
+
+function getChangeUri(change: GitResourceState): vscode.Uri | undefined {
+  return change.resourceUri ?? change.uri;
+}
+
+function getChangeStatus(change: GitResourceState): number | undefined {
+  return change.type ?? change.status;
+}
+
+function hasChangeUri(change: { uri: vscode.Uri | undefined; status: number | undefined }): change is { uri: vscode.Uri; status: number | undefined } {
+  return hasFsPath(change.uri);
+}
+
+function hasFsPath(uri: vscode.Uri | undefined): uri is vscode.Uri {
+  return typeof uri?.fsPath === "string" && uri.fsPath.length > 0;
 }
 
 function isSameOrParentPath(repositoryRoot: string, workspacePath: string): boolean {
