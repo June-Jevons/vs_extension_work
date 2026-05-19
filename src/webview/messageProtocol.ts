@@ -43,6 +43,22 @@ export function isWebviewToExtensionMessage(value: unknown): value is WebviewToE
   }
 }
 
+export function isExtensionToWebviewMessage(value: unknown): value is ExtensionToWebviewMessage {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+
+  switch (value.type) {
+    case "state":
+      return isRecord(value.state);
+    case "error":
+    case "loading":
+      return typeof value.message === "string" && value.message.length > 0;
+    default:
+      return false;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

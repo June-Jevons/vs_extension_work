@@ -154,8 +154,12 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile:extension": "tsc -p ./",
+    "compile:webview": "vite build --config ./webview.vite.config.ts",
+    "compile": "npm run compile:extension && npm run compile:webview",
+    "watch:extension": "tsc -watch -p ./",
+    "watch:webview": "vite build --watch --config ./webview.vite.config.ts",
+    "watch": "npm run watch:extension",
     "test": "npm run compile && npm run test:unit",
     "test:unit": "tsc -p ./tsconfig.test.json && node ./out-test/test/suite/runTests.js",
     "visual:render": "npm run compile && tsc -p ./tsconfig.scripts.json && node ./out-scripts/scripts/render-ui-snapshots.js",
@@ -168,10 +172,20 @@
   "devDependencies": {
     "@playwright/test": "1.60.0",
     "@types/node": "24.12.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/vscode": "1.120.0",
-    "@vscode/test-cli": "^0.0.11",
+    "@vitejs/plugin-react": "^6.0.2",
+    "@vscode/test-cli": "0.0.12",
     "@vscode/test-electron": "2.5.2",
     "@vscode/vsce": "3.9.1",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vite": "^8.0.13"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.10.2",
+    "elkjs": "^0.11.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   }
 }

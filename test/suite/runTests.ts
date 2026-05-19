@@ -8,5 +8,6 @@ import "./riskScorer.test";
 import "./storage.test";
 import "./ubuntuPathKind.test";
 import "./vscodeConfigUbuntu.test";
+import "./webviewAssets.test";
 
 console.log("All unit checks passed.");

@@ -1,0 +1,11 @@
+{
+  "src/webview-app/main.tsx": {
+    "file": "assets/main-BJ1P5hfl.js",
+    "name": "main",
+    "src": "src/webview-app/main.tsx",
+    "isEntry": true,
+    "css": [
+      "assets/main-BU1fUESN.css"
+    ]
+  }
+}

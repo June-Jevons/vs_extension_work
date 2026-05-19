@@ -83,7 +83,7 @@ In the launched VS Code window:
 - Confirm Whole Architecture shows small unclassified module sets as individual `Unclassified module` nodes with real paths. For large sets it may show one `Unclassified Modules` summary node plus real top paths and reasons in diagnostics.
 - Confirm Feature Focus explains the selected feature, shows key runtime modules first, and keeps related tests in the separate Related Tests panel.
 - Confirm dashboard text can be selected and copied. Full automated selection testing is limited because VS Code webview text selection is not fully exposed to the command-line test harness; the webview avoids replacing identical rendered state and delays watcher renders while selection is active.
-- Confirm graph controls (`+`, `-`, `Fit`) change and reset the SVG view until the React Flow migration replaces the legacy SVG graph.
+- Confirm the React webview shell loads, mode tabs change state, and dashboard actions post messages to the extension. React Flow graph controls are added in the graph migration pass.
 - Use **Refresh**, **Configure**, **Timeline**, **Capture Baseline**, **Diff Since Baseline**, and **Export Snapshot** from the dashboard or Command Palette.
 - Confirm no files are created in `/home/jevons/ABB_ROS2`.
 
@@ -170,4 +170,4 @@ Export writes JSON only after the user explicitly chooses a save path in the Sav
 - The scanner uses textual Python import parsing and does not execute target Python code.
 - Workspace compile, style, and test checks are reported as not run or unknown unless a future command explicitly wires them.
 - Full installed-VSIX UI validation may still require human inspection because VS Code desktop Activity Bar, Status Bar, and text-selection behavior are not fully observable from command-line automation.
-- Pass 1 keeps the existing legacy SVG dashboard renderer in place; later migration passes move the dashboard to React, React Flow, and ELK.
+- The live VS Code dashboard now loads the Vite-built React webview shell. Standalone visual snapshots still use the legacy renderer until the full dashboard and graph migration pass moves them to React, React Flow, and ELK.

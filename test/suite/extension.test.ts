@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { createMockDashboardState } from "../../src/mockData/mockDashboardState";
 import { DashboardMode, DashboardState, ModuleNode } from "../../src/webview/dashboardState";
-import { isWebviewToExtensionMessage } from "../../src/webview/messageProtocol";
+import { isExtensionToWebviewMessage, isWebviewToExtensionMessage } from "../../src/webview/messageProtocol";
 import { renderDashboardShell } from "../../src/webview/renderers";
 
 const commonTestIds = [
@@ -67,6 +67,11 @@ assert.ok(isWebviewToExtensionMessage({ type: "focusTimeline", available: false 
 assert.ok(isWebviewToExtensionMessage({ type: "selectionState", active: true }));
 assert.ok(!isWebviewToExtensionMessage({ type: "setMode", mode: "scanner" }));
 assert.ok(!isWebviewToExtensionMessage({ type: "selectFeature", featureId: "" }));
+assert.ok(isExtensionToWebviewMessage({ type: "state", state: createMockDashboardState() }));
+assert.ok(isExtensionToWebviewMessage({ type: "error", message: "Bundle missing." }));
+assert.ok(isExtensionToWebviewMessage({ type: "loading", message: "Refreshing." }));
+assert.ok(!isExtensionToWebviewMessage({ type: "state", state: undefined }));
+assert.ok(!isExtensionToWebviewMessage({ type: "error", message: "" }));
 
 const liveState = createRealDashboardState("wholeArchitecture");
 const liveHtml = renderDashboardShell(liveState);

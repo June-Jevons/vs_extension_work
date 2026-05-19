@@ -24,6 +24,7 @@ export class DashboardPanel {
   private lastRenderedHash = "";
   private selectionActive = false;
   private pendingRender = false;
+  private shellRendered = false;
 
   private constructor(
     private readonly context: vscode.ExtensionContext,
@@ -150,7 +151,11 @@ export class DashboardPanel {
     }
     const graphStats = getGraphStatsForMode(state);
     this.panel.title = `Live Architecture Map: ${state.mode}`;
-    this.panel.webview.html = getDashboardWebviewHtml(this.panel.webview, state, getNonce());
+    if (!this.shellRendered) {
+      this.panel.webview.html = getDashboardWebviewHtml(this.panel.webview, this.context.extensionUri, getNonce());
+      this.shellRendered = true;
+    }
+    void this.panel.webview.postMessage({ type: "state", state });
     this.lastRenderedHash = renderHash;
     this.pendingRender = false;
     logInfo(`dashboard render: title=${this.panel.title}, subtitleSource=${state.isMockData ? "mock" : "live"}, mockData=${state.isMockData}, graphNodes=${graphStats.nodes}, graphEdges=${graphStats.edges}, graphStats=${graphStats.summary}`);

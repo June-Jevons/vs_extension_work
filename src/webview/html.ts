@@ -1,19 +1,27 @@
-import * as vscode from "vscode";
-import { DashboardState } from "./dashboardState";
-import { renderDashboardShell } from "./renderers";
-import { dashboardStyles } from "./styles";
+import type * as vscode from "vscode";
+import { getWebviewAssetUris } from "./webviewAssets";
 
 export function getDashboardWebviewHtml(
   webview: vscode.Webview,
-  state: DashboardState,
+  extensionUri: vscode.Uri,
   nonce: string
 ): string {
+  const assets = getWebviewAssetUris(webview, extensionUri);
   const csp = [
     "default-src 'none'",
     `img-src ${webview.cspSource} data:`,
-    `style-src 'nonce-${nonce}'`,
+    `font-src ${webview.cspSource}`,
+    `style-src ${webview.cspSource} 'nonce-${nonce}'`,
     `script-src 'nonce-${nonce}'`
   ].join("; ");
+
+  if (assets.kind === "missing") {
+    return renderMissingBundleHtml(csp, nonce, assets.message, assets.detail);
+  }
+
+  const styles = assets.styleUris
+    .map((styleUri) => `  <link rel="stylesheet" href="${escapeAttribute(styleUri)}">`)
+    .join("\n");
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -22,154 +30,11 @@ export function getDashboardWebviewHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <title>Live Architecture Map</title>
-  <style nonce="${nonce}">${dashboardStyles}</style>
+${styles}
 </head>
 <body>
-  <div id="app">${renderDashboardShell(state)}</div>
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    let selectionActive = false;
-    let selectionTimer;
-
-    document.addEventListener("click", (event) => {
-      const graphControl = event.target.closest("[data-graph-action]");
-      if (graphControl) {
-        handleGraphControl(graphControl);
-        return;
-      }
-
-      const target = event.target.closest("[data-mode], [data-command], [data-feature-id]");
-      if (!target) {
-        return;
-      }
-
-      const mode = target.getAttribute("data-mode");
-      if (mode) {
-        vscode.postMessage({ type: "setMode", mode });
-        return;
-      }
-
-      const featureId = target.getAttribute("data-feature-id");
-      if (featureId) {
-        vscode.postMessage({ type: "selectFeature", featureId });
-        return;
-      }
-
-      const command = target.getAttribute("data-command");
-      if (command === "refresh") {
-        vscode.postMessage({ type: "refresh" });
-      } else if (command === "captureBaseline") {
-        vscode.postMessage({ type: "captureBaseline" });
-      } else if (command === "showDiffSinceBaseline") {
-        vscode.postMessage({ type: "showDiffSinceBaseline" });
-      } else if (command === "exportSnapshot") {
-        vscode.postMessage({ type: "exportSnapshot" });
-      } else if (command === "configure") {
-        vscode.postMessage({ type: "configure" });
-      } else if (command === "focusTimeline") {
-        const timeline = document.querySelector("[data-testid='structural-timeline']");
-        if (timeline) {
-          timeline.scrollIntoView({ behavior: "smooth", block: "center" });
-          timeline.classList.add("focus-pulse");
-          window.setTimeout(() => timeline.classList.remove("focus-pulse"), 1400);
-        }
-        vscode.postMessage({ type: "focusTimeline", available: Boolean(timeline) });
-      }
-    });
-
-    function handleGraphControl(control) {
-      const panel = control.closest("[data-graph-panel]");
-      const svg = panel ? panel.querySelector("svg.graph-svg") : undefined;
-      if (!svg) {
-        return;
-      }
-
-      const action = control.getAttribute("data-graph-action");
-      const fitViewBox = svg.getAttribute("data-fit-viewbox") || svg.getAttribute("viewBox");
-      const currentViewBox = parseViewBox(svg.getAttribute("viewBox") || fitViewBox);
-      if (!currentViewBox || !fitViewBox) {
-        return;
-      }
-
-      if (action === "reset") {
-        svg.setAttribute("viewBox", fitViewBox);
-        svg.dataset.zoom = "1";
-        return;
-      }
-
-      const factor = action === "zoom-in" ? 0.8 : action === "zoom-out" ? 1.25 : 1;
-      const nextWidth = currentViewBox.width * factor;
-      const nextHeight = currentViewBox.height * factor;
-      const centerX = currentViewBox.x + currentViewBox.width / 2;
-      const centerY = currentViewBox.y + currentViewBox.height / 2;
-      const next = {
-        x: centerX - nextWidth / 2,
-        y: centerY - nextHeight / 2,
-        width: nextWidth,
-        height: nextHeight
-      };
-      svg.setAttribute("viewBox", formatViewBox(next));
-      svg.dataset.zoom = String(Number(svg.dataset.zoom || "1") / factor);
-    }
-
-    function parseViewBox(value) {
-      if (!value) {
-        return undefined;
-      }
-      const parts = value.trim().split(/\\s+/).map(Number);
-      if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
-        return undefined;
-      }
-      return {
-        x: parts[0],
-        y: parts[1],
-        width: parts[2],
-        height: parts[3]
-      };
-    }
-
-    function formatViewBox(viewBox) {
-      return [
-        viewBox.x.toFixed(2),
-        viewBox.y.toFixed(2),
-        viewBox.width.toFixed(2),
-        viewBox.height.toFixed(2)
-      ].join(" ");
-    }
-
-    document.addEventListener("change", (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLSelectElement)) {
-        return;
-      }
-      if (target.getAttribute("data-command") === "selectFeature") {
-        vscode.postMessage({ type: "selectFeature", featureId: target.value });
-      }
-    });
-
-    document.addEventListener("selectionchange", () => {
-      window.clearTimeout(selectionTimer);
-      selectionTimer = window.setTimeout(() => {
-        const selection = window.getSelection();
-        const active = Boolean(selection && selection.toString().length > 0);
-        if (active !== selectionActive) {
-          selectionActive = active;
-          vscode.postMessage({ type: "selectionState", active });
-        }
-      }, 80);
-    });
-
-    document.addEventListener("mouseup", () => {
-      const selection = window.getSelection();
-      const active = Boolean(selection && selection.toString().length > 0);
-      if (active !== selectionActive) {
-        selectionActive = active;
-        vscode.postMessage({ type: "selectionState", active });
-      }
-    });
-
-    vscode.postMessage({ type: "ready" });
-  </script>
+  <div id="root" data-testid="react-webview-root">Loading Live Architecture Map...</div>
+  <script type="module" nonce="${nonce}" src="${escapeAttribute(assets.scriptUri)}"></script>
 </body>
 </html>`;
 }
@@ -181,4 +46,64 @@ export function getNonce(): string {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }
   return text;
+}
+
+function renderMissingBundleHtml(csp: string, nonce: string, message: string, detail: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <title>Live Architecture Map</title>
+  <style nonce="${nonce}">
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #101418;
+      color: #e8edf2;
+      font-family: system-ui, sans-serif;
+      display: grid;
+      place-items: center;
+    }
+    main {
+      width: min(720px, calc(100vw - 48px));
+      border: 1px solid #38424c;
+      border-radius: 8px;
+      padding: 24px;
+      background: #171d23;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 20px;
+    }
+    p {
+      margin: 8px 0 0;
+      color: #bac6d1;
+      line-height: 1.5;
+    }
+    code {
+      color: #f3d27c;
+    }
+  </style>
+</head>
+<body>
+  <main data-testid="webview-bundle-error">
+    <h1>${escapeHtml(message)}</h1>
+    <p>${escapeHtml(detail)}</p>
+    <p>Build the React webview with <code>npm run compile:webview</code>, then reopen the dashboard.</p>
+  </main>
+</body>
+</html>`;
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value).replace(/"/g, "&quot;");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
