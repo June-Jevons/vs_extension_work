@@ -64,10 +64,10 @@ code --new-window \
   --user-data-dir=/tmp/vscode-lam-user-data \
   --extensions-dir=/tmp/vscode-lam-extensions \
   --disable-gpu \
-  --folder-uri file:///home/jevons/ABB_ROS2
+  /home/jevons/ABB_ROS2
 ```
 
-The checked-in F5 configuration opens `/home/jevons/ABB_ROS2`, uses `/tmp/vscode-lam-*` isolation directories, and runs only `npm: compile` as its prelaunch task. Missing dependencies should fail clearly at compile time; the debug task does not run hidden install commands.
+The checked-in F5 configuration opens a fresh Extension Development Host window, opens `/home/jevons/ABB_ROS2` as the positional workspace folder, uses `/tmp/vscode-lam-*` isolation directories, and runs only `npm: compile` as its prelaunch task. Missing dependencies should fail clearly at compile time; the debug task does not run hidden install commands.
 
 ## Validate ABB_ROS2
 

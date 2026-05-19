@@ -7,15 +7,17 @@
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
-        "--user-data-dir=/tmp/vscode-lam-dev-user-data-clean",
-        "--extensions-dir=/tmp/vscode-lam-dev-extensions-clean",
+        "--new-window",
+        "--user-data-dir",
+        "/tmp/vscode-lam-dev-user-data-clean",
+        "--extensions-dir",
+        "/tmp/vscode-lam-dev-extensions-clean",
         "--disable-gpu",
         "--disable-updates",
         "--disable-workspace-trust",
         "--skip-release-notes",
         "--skip-welcome",
-        "--folder-uri",
-        "file:///home/jevons/ABB_ROS2"
+        "/home/jevons/ABB_ROS2"
       ],
       "outFiles": [
         "${workspaceFolder}/out/**/*.js"

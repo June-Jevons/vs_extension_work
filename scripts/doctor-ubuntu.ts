@@ -163,8 +163,18 @@ function isNativeLinuxPath(value: string): boolean {
 
 function getConfiguredWorkspacePaths(launchJson: LaunchJson): string[] {
   const paths: string[] = [];
+  const optionsWithPathValues = new Set(["--user-data-dir", "--extensions-dir", "--extensionDevelopmentPath"]);
   for (const configuration of launchJson.configurations ?? []) {
-    for (const argument of configuration.args ?? []) {
+    const args = configuration.args ?? [];
+    for (let index = 0; index < args.length; index += 1) {
+      const argument = args[index] ?? "";
+      if (optionsWithPathValues.has(argument)) {
+        index += 1;
+        continue;
+      }
+      if ([...optionsWithPathValues].some((option) => argument.startsWith(`${option}=`))) {
+        continue;
+      }
       if (argument.startsWith("/") && !argument.startsWith("--")) {
         paths.push(argument);
       } else if (argument.startsWith("file:///")) {

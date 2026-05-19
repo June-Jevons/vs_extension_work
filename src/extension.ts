@@ -17,6 +17,8 @@ export interface LiveArchitectureMapApi {
 export function activate(context: vscode.ExtensionContext): LiveArchitectureMapApi {
   const outputChannel = getLiveArchitectureOutputChannel();
   logInfo("activation");
+  logInfo(`extension mode=${extensionModeLabel(context.extensionMode)}`);
+  logInfo(`extension path=${context.extensionPath}`);
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (folder) {
     logInfo(`workspace folder URI=${folder.uri.toString()}`);
@@ -66,4 +68,15 @@ export function activate(context: vscode.ExtensionContext): LiveArchitectureMapA
 
 export function deactivate(): void {
   // VS Code disposes registered subscriptions from the extension context.
+}
+
+function extensionModeLabel(mode: vscode.ExtensionMode): string {
+  switch (mode) {
+    case vscode.ExtensionMode.Development:
+      return "development";
+    case vscode.ExtensionMode.Test:
+      return "test";
+    case vscode.ExtensionMode.Production:
+      return "production";
+  }
 }
