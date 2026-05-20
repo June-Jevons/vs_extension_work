@@ -299,6 +299,20 @@ p {
   font-size: 12px;
 }
 
+.graph-live-pill {
+  flex: none;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #f2c56d;
+  border-radius: 999px;
+  padding: 0 10px;
+  background: rgba(72, 53, 17, 0.72);
+  color: #ffe1a3;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .react-flow-frame {
   position: relative;
   height: 560px;
@@ -498,12 +512,57 @@ p {
   border-color: #69c989;
 }
 
+.graph-node-live-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid #526575;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #101820;
+  color: #dbe8f2;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.graph-node-live-marker.marker-active {
+  border-color: #77b7ff;
+  background: #10253d;
+  color: #b9dcff;
+}
+
+.graph-node-live-marker.marker-changed {
+  border-color: #f2c56d;
+  background: #34270e;
+  color: #ffe1a3;
+}
+
+.graph-node-live-marker.marker-neighbor {
+  border-color: #90a9ba;
+  background: #15202a;
+  color: #ccdae4;
+}
+
+.graph-node-live-marker.marker-stale {
+  border-color: #a7b2bd;
+  background: #20242a;
+  color: #d7dde3;
+}
+
 .graph-node.emphasis-active {
-  box-shadow: 0 0 0 2px #77b7ff, 0 10px 22px rgba(0, 0, 0, 0.28);
+  border-width: 2px;
+  box-shadow: 0 0 0 3px rgba(119, 183, 255, 0.42), 0 0 24px rgba(119, 183, 255, 0.25), 0 10px 22px rgba(0, 0, 0, 0.28);
 }
 
 .graph-node.emphasis-changed {
-  box-shadow: 0 0 0 2px #f2c56d, 0 10px 22px rgba(0, 0, 0, 0.28);
+  border-width: 2px;
+  box-shadow: 0 0 0 3px rgba(242, 197, 109, 0.45), 0 0 24px rgba(242, 197, 109, 0.24), 0 10px 22px rgba(0, 0, 0, 0.28);
 }
 
 .graph-node.emphasis-neighbor {
@@ -728,6 +787,30 @@ p {
 .graph-legend-risk-semantic {
   border: 2px solid #78a6d8;
   background: transparent;
+}
+
+.graph-legend-signal-active {
+  border-color: #77b7ff;
+  background: #10253d;
+  box-shadow: 0 0 0 2px rgba(119, 183, 255, 0.28);
+}
+
+.graph-legend-signal-changed {
+  border-color: #f2c56d;
+  background: #34270e;
+  box-shadow: 0 0 0 2px rgba(242, 197, 109, 0.28);
+}
+
+.graph-legend-signal-neighbor {
+  border-style: dashed;
+  border-color: #90a9ba;
+  background: #15202a;
+}
+
+.graph-legend-signal-stale {
+  border-style: dashed;
+  border-color: #a7b2bd;
+  background: #20242a;
 }
 
 .graph-legend-line {

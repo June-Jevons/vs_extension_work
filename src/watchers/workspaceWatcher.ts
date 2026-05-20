@@ -1,19 +1,37 @@
 import * as vscode from "vscode";
 import { LiveArchitectureStateManager } from "../core/analysisEngine";
+import { logInfo } from "../core/outputChannel";
 import { shouldExcludePath } from "../core/scanPathFilter";
 
 const WATCH_PATTERNS = [
   "**/.codex/status.json",
   "**/*.py",
+  "**/*.launch.py",
+  "**/*.cpp",
+  "**/*.c",
+  "**/*.h",
+  "**/*.hpp",
+  "**/*.ts",
+  "**/*.tsx",
+  "**/*.js",
+  "**/*.jsx",
+  "**/*.css",
+  "**/*.scss",
   "**/*.yaml",
   "**/*.yml",
   "**/*.json",
   "**/*.toml",
   "**/*.md",
+  "**/*.xml",
+  "**/*.urdf",
+  "**/*.xacro",
+  "**/CMakeLists.txt",
   "**/package.xml",
   "**/setup.py",
   "**/pyproject.toml"
 ] as const;
+
+const REFRESH_DEBOUNCE_MS = 160;
 
 export class WorkspaceWatcher implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
@@ -59,6 +77,7 @@ export class WorkspaceWatcher implements vscode.Disposable {
     }
     const isStatusRefresh = relativePath === ".codex/status.json" || relativePath.endsWith("/.codex/status.json");
     if (isStatusRefresh) {
+      logInfo(`watcher event: codex status changed path=${relativePath}`);
       this.queueRefresh();
       return;
     }
@@ -71,6 +90,7 @@ export class WorkspaceWatcher implements vscode.Disposable {
       this.deletedPaths.delete(relativePath);
     }
 
+    logInfo(`watcher event: kind=${kind}, path=${relativePath}`);
     this.queueRefresh();
   }
 
@@ -85,10 +105,11 @@ export class WorkspaceWatcher implements vscode.Disposable {
       const deletedPaths = [...this.deletedPaths];
       this.changedPaths.clear();
       this.deletedPaths.clear();
+      logInfo(`watcher refresh: changedPaths=${changedPaths.length}, deletedPaths=${deletedPaths.length}`);
       void this.stateManager.refresh({
         changedPaths,
         deletedPaths
       });
-    }, 600);
+    }, REFRESH_DEBOUNCE_MS);
   }
 }

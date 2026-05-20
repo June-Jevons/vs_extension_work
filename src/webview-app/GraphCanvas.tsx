@@ -18,7 +18,7 @@ import {
   GraphLayoutMode,
   layoutGraphWithElk
 } from "../webview/elkLayout";
-import { GraphNodeKind, GraphSemanticEdgeKind, GraphViewEdge, GraphViewModel, GraphViewNode } from "../webview/graphViewModel";
+import { GraphNodeEmphasis, GraphNodeKind, GraphSemanticEdgeKind, GraphViewEdge, GraphViewModel, GraphViewNode } from "../webview/graphViewModel";
 import { getCachedLayout, storeCachedLayout } from "./layoutCache";
 import { postToExtension } from "./vscodeApi";
 
@@ -85,6 +85,9 @@ export function GraphCanvas({ view, testId, expandedKeys = [], onToggleExpansion
           <p>{view.description}</p>
         </div>
         <div className="graph-card-actions">
+          {view.target === "liveImpact" ? (
+            <span className="graph-live-pill" data-testid="graph-live-indicator">{getLiveIndicatorText(view)}</span>
+          ) : null}
           <label className="graph-layout-control">
             <span className="graph-layout-label">Layout</span>
             <select
@@ -219,8 +222,10 @@ function LaidOutGraph({
 
 function GraphLegend({ view }: { view: GraphViewModel }): React.JSX.Element {
   const nodeKinds = new Set(view.nodes.map((node) => node.kind));
+  const signalKinds = new Set(view.nodes.map((node) => node.emphasis).filter((emphasis): emphasis is GraphNodeEmphasis => Boolean(emphasis)));
   const edgeKinds = new Set(view.edges.map((edge) => edge.semanticKind).filter((kind): kind is GraphSemanticEdgeKind => Boolean(kind)));
   const visibleBlockItems = blockLegendItems.filter((item) => nodeKinds.has(item.id));
+  const visibleSignalItems = signalLegendItems.filter((item) => signalKinds.has(item.id));
   const visibleEdgeItems = edgeLegendItems.filter((item) => edgeKinds.has(item.id));
 
   return (
@@ -232,6 +237,17 @@ function GraphLegend({ view }: { view: GraphViewModel }): React.JSX.Element {
           {visibleBlockItems.map((item) => (
             <div className="graph-legend-row" key={item.id} title={item.detail}>
               <i className={`graph-legend-swatch graph-legend-node-${item.id}`} />
+              <b>{item.label}</b>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {visibleSignalItems.length > 0 ? (
+        <div className="graph-legend-group">
+          <span>Live</span>
+          {visibleSignalItems.map((item) => (
+            <div className="graph-legend-row" key={item.id} title={item.detail}>
+              <i className={`graph-legend-swatch graph-legend-signal-${item.id}`} />
               <b>{item.label}</b>
             </div>
           ))}
@@ -285,6 +301,7 @@ function GraphNodeCard({ data }: NodeProps<FlowNode>): React.JSX.Element {
           {data.expanded ? "-" : "+"}
         </button>
       ) : null}
+      {node.emphasis ? <span className={`graph-node-live-marker marker-${node.emphasis}`}>{emphasisLabel(node.emphasis)}</span> : null}
       <strong>{node.label}</strong>
       {node.role ? <em>{node.role}</em> : null}
       <span>{node.detail}</span>
@@ -299,6 +316,28 @@ function GraphNodeCard({ data }: NodeProps<FlowNode>): React.JSX.Element {
       <Handle className="graph-handle" type="source" position={Position.Right} />
     </div>
   );
+}
+
+function getLiveIndicatorText(view: GraphViewModel): string {
+  const changedCount = Math.max(0, ...view.nodes.map((node) => node.changedFileCount ?? 0));
+  const hasActive = view.nodes.some((node) => node.emphasis === "active");
+  if (changedCount > 0) {
+    return `Live: ${changedCount} changed`;
+  }
+  return hasActive ? "Live: active" : "Live: clean";
+}
+
+function emphasisLabel(emphasis: GraphNodeEmphasis): string {
+  switch (emphasis) {
+    case "active":
+      return "Live";
+    case "changed":
+      return "Changed";
+    case "neighbor":
+      return "Nearby";
+    case "stale":
+      return "Last";
+  }
 }
 
 function toFlowNodes(
@@ -470,6 +509,13 @@ const riskLegendItems: Array<LegendItem<"high" | "medium" | "low" | "semantic">>
   { id: "medium", label: "Medium risk", detail: "Medium-risk runtime surface" },
   { id: "low", label: "Low risk", detail: "Low-risk runtime surface" },
   { id: "semantic", label: "Role outline", detail: "Used when no risk level is assigned" }
+];
+
+const signalLegendItems: Array<LegendItem<GraphNodeEmphasis>> = [
+  { id: "active", label: "Live work", detail: "Currently active Codex work area" },
+  { id: "changed", label: "Changed", detail: "Changed file or feature" },
+  { id: "neighbor", label: "Nearby", detail: "Connected to the current change" },
+  { id: "stale", label: "Last seen", detail: "Retained from the last detected Codex context" }
 ];
 
 const edgeLegendItems: Array<LegendItem<GraphSemanticEdgeKind>> = [

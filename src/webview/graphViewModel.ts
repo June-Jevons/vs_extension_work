@@ -125,6 +125,7 @@ interface VisibleArchitectureState {
 }
 
 const MAX_EXPANDED_DETAIL_NODES = 20;
+const MAX_DEFAULT_VISIBLE_CHANGED_FILE_NODES = 8;
 const RETAINED_CODEX_CONTEXT_DIAGNOSTIC = "Last detected Codex context retained in this webview session.";
 const TEST_FACT_PATTERN = /(^|[\/._\-\s])(tests?|pytest|gtest|rostest)([\/._\-\s]|$)|(^|[\/])test[_-]|[_-]test(\.|$)|\.spec\./i;
 
@@ -594,7 +595,7 @@ export function buildFeatureFocusSemanticGraph(
 function buildLiveImpactGraph(state: DashboardState): GraphViewModel {
   const visible = getVisibleArchitectureState(state);
   const context = resolveCodexWorkContext(state, visible);
-  if (context.seedFeatureIds.size === 0) {
+  if (context.seedFeatureIds.size === 0 && context.changedFiles.length === 0) {
     const overview = buildWholeArchitectureSemanticGraph(state);
     return {
       ...overview,
@@ -633,6 +634,7 @@ function buildLiveImpactGraph(state: DashboardState): GraphViewModel {
   const nodes: GraphViewNode[] = [systemNode];
   const edges: GraphViewEdge[] = [];
   const layers = new Map<string, FeatureBlock[]>();
+  const changedFeatureIdsWithVisibleFileNodes = new Set<string>();
 
   for (const feature of visible.featureBlocks.filter((feature) => displayFeatureIds.has(feature.id))) {
     const definition = getSemanticFeatureDefinition(feature.id);
@@ -677,7 +679,8 @@ function buildLiveImpactGraph(state: DashboardState): GraphViewModel {
       edges.push(edge("contains", layerId, featureNodeId, "contains", "feature", "high"));
 
       if (changedFiles.length > 0) {
-        addChangedFileExpansionNodes(nodes, edges, feature, changedFiles, featureExpansionKey);
+        changedFeatureIdsWithVisibleFileNodes.add(feature.id);
+        addChangedFileExpansionNodes(nodes, edges, feature, changedFiles);
       }
 
       for (const summaryNode of buildRuntimeRoleSummaryNodes(feature, featureModules, visible.dependencies, definition)) {
@@ -711,6 +714,11 @@ function buildLiveImpactGraph(state: DashboardState): GraphViewModel {
       "feature",
       spec.confidence
     ));
+  }
+
+  const standaloneChangedFiles = context.changedFiles.filter((file) => !file.featureId || !changedFeatureIdsWithVisibleFileNodes.has(file.featureId));
+  if (standaloneChangedFiles.length > 0) {
+    addStandaloneChangedFileNodes(nodes, edges, standaloneChangedFiles, "codex:work");
   }
 
   return ensureNonEmpty(pruneDanglingEdges({
@@ -794,7 +802,7 @@ function resolveCodexWorkContext(state: DashboardState, visible: VisibleArchitec
     }).filter((file): file is ChangedFile => Boolean(file))
     : state.snapshot.changedFiles;
   const changedFiles = candidateFiles.filter((file) => {
-    if (file.featureId && !visibleFeatureIds.has(file.featureId)) {
+    if (file.featureId === "tests") {
       return false;
     }
     return !file.moduleId || visibleModuleIds.has(file.moduleId);
@@ -886,8 +894,7 @@ function addChangedFileExpansionNodes(
   nodes: GraphViewNode[],
   edges: GraphViewEdge[],
   feature: FeatureBlock,
-  changedFiles: ChangedFile[],
-  featureExpansionKey: string
+  changedFiles: ChangedFile[]
 ): void {
   const featureNodeId = featureNodeIdFor(feature.id);
   const groupId = `changed-files:${feature.id}`;
@@ -903,9 +910,9 @@ function addChangedFileExpansionNodes(
     changedFileCount: changedFiles.length,
     badges: ["files"],
     expansionKey: groupExpansionKey,
-    expansionParentKey: featureExpansionKey,
     expansionLevel: 1,
-    defaultVisible: false
+    defaultVisible: true,
+    emphasis: "changed"
   });
   edges.push(edge("contains", featureNodeId, groupId, "contains", "feature", "medium"));
 
@@ -914,6 +921,7 @@ function addChangedFileExpansionNodes(
     .slice(0, MAX_EXPANDED_DETAIL_NODES);
   for (const file of shownFiles) {
     const fileNodeId = fileNodeIdFor(file.path);
+    const visibleByDefault = shownFiles.indexOf(file) < MAX_DEFAULT_VISIBLE_CHANGED_FILE_NODES;
     nodes.push({
       id: fileNodeId,
       label: file.path.split("/").at(-1) ?? file.path,
@@ -926,9 +934,10 @@ function addChangedFileExpansionNodes(
       badges: [file.status, file.riskLevel],
       primaryPaths: [file.path],
       openPath: file.path,
-      expansionParentKey: groupExpansionKey,
+      expansionParentKey: visibleByDefault ? undefined : groupExpansionKey,
       expansionLevel: 2,
-      defaultVisible: false
+      defaultVisible: visibleByDefault,
+      emphasis: "changed"
     });
     edges.push(edge("contains", groupId, fileNodeId, "contains", "feature", "medium"));
   }
@@ -948,6 +957,78 @@ function addChangedFileExpansionNodes(
       badges: ["more"],
       expansionParentKey: groupExpansionKey,
       expansionLevel: 2,
+      defaultVisible: false
+    });
+    edges.push(edge("contains", groupId, moreId, "contains", "feature", "low"));
+  }
+}
+
+function addStandaloneChangedFileNodes(
+  nodes: GraphViewNode[],
+  edges: GraphViewEdge[],
+  changedFiles: ChangedFile[],
+  parentNodeId: string
+): void {
+  const groupId = "changed-files:standalone";
+  const groupExpansionKey = "changed-files:standalone";
+  nodes.push({
+    id: groupId,
+    label: "Changed Files",
+    detail: `${changedFiles.length} changed file${changedFiles.length === 1 ? "" : "s"} without a visible runtime feature block`,
+    kind: "summary",
+    width: 300,
+    height: 120,
+    riskLevel: highestRisk(changedFiles.map((file) => file.riskLevel)),
+    changedFileCount: changedFiles.length,
+    badges: ["live", "files"],
+    expansionKey: groupExpansionKey,
+    expansionLevel: 0,
+    defaultVisible: true,
+    emphasis: "changed"
+  });
+  edges.push(edge("contains", parentNodeId, groupId, "contains", "feature", "medium"));
+
+  const shownFiles = changedFiles
+    .sort((left, right) => riskOrder(right.riskLevel) - riskOrder(left.riskLevel) || left.path.localeCompare(right.path))
+    .slice(0, MAX_EXPANDED_DETAIL_NODES);
+  for (const file of shownFiles) {
+    const visibleByDefault = shownFiles.indexOf(file) < MAX_DEFAULT_VISIBLE_CHANGED_FILE_NODES;
+    const fileNodeId = fileNodeIdFor(`standalone:${file.path}`);
+    nodes.push({
+      id: fileNodeId,
+      label: file.path.split("/").at(-1) ?? file.path,
+      detail: `${file.status}: ${file.reason}`,
+      kind: "file",
+      width: 300,
+      height: 118,
+      riskLevel: file.riskLevel,
+      changedFileCount: 1,
+      badges: [file.status, file.riskLevel],
+      primaryPaths: [file.path],
+      openPath: file.path,
+      expansionParentKey: visibleByDefault ? undefined : groupExpansionKey,
+      expansionLevel: 1,
+      defaultVisible: visibleByDefault,
+      emphasis: "changed"
+    });
+    edges.push(edge("contains", groupId, fileNodeId, "contains", "feature", "medium"));
+  }
+
+  const hiddenCount = changedFiles.length - shownFiles.length;
+  if (hiddenCount > 0) {
+    const moreId = `${groupId}:more`;
+    nodes.push({
+      id: moreId,
+      label: `+${hiddenCount} more changed files`,
+      detail: "Additional changed files are hidden to keep the expanded graph readable.",
+      kind: "summary",
+      width: 260,
+      height: 104,
+      role: "Hidden file summary",
+      changedFileCount: hiddenCount,
+      badges: ["more"],
+      expansionParentKey: groupExpansionKey,
+      expansionLevel: 1,
       defaultVisible: false
     });
     edges.push(edge("contains", groupId, moreId, "contains", "feature", "low"));
@@ -1034,7 +1115,7 @@ function featureToSemanticNode(
     detail: `${featureModules.length} runtime modules, ${changedFileCount} changed. ${inputsOutputs}`,
     kind: "feature",
     width: 320,
-    height: 154,
+    height: 188,
     riskLevel: feature.riskLevel,
     moduleCount: featureModules.length,
     changedFileCount,

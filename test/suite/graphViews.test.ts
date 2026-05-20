@@ -50,7 +50,34 @@ assert.ok(!whole.nodes.some((node) => node.label === "Tests"), "Whole Architectu
 const liveImpact = buildGraphViewForTarget(state, "liveImpact");
 assert.strictEqual(liveImpact.title, "Codex Work Impact");
 assert.ok(liveImpact.nodes.some((node) => node.emphasis === "active" || node.emphasis === "changed"), "Codex Work Impact should emphasize active or changed features");
-assert.ok(getDefaultVisibleNodes(liveImpact).every((node) => node.kind !== "file" && node.expansionLevel !== 2), "Codex Work Impact should hide changed files and detail nodes by default");
+assert.ok(getDefaultVisibleNodes(liveImpact).some((node) => node.kind === "file" && node.emphasis === "changed"), "Codex Work Impact should show changed file nodes by default");
+
+const unmatchedChangeState: DashboardState = {
+  ...state,
+  snapshot: {
+    ...state.snapshot,
+    changedFiles: [
+      {
+        path: "docs/notes.md",
+        status: "modified",
+        featureId: "docs",
+        riskLevel: "low",
+        reason: "Documentation changed.",
+        lastChangedIso: "2026-05-20T01:00:00Z"
+      }
+    ],
+    impactedFeatures: [],
+    codexActivity: {
+      ...state.snapshot.codexActivity,
+      activeFeature: undefined,
+      modifiedFiles: ["docs/notes.md"],
+      currentIntent: "Reviewing one modified file."
+    }
+  }
+};
+const unmatchedLiveImpact = buildGraphViewForTarget(unmatchedChangeState, "liveImpact");
+assert.strictEqual(unmatchedLiveImpact.title, "Codex Work Impact");
+assert.ok(getDefaultVisibleNodes(unmatchedLiveImpact).some((node) => node.kind === "file" && node.openPath === "docs/notes.md"), "Codex Work Impact should show changed files even when they do not map to a visible runtime feature");
 
 const testFactState: DashboardState = {
   ...state,

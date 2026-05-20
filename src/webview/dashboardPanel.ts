@@ -197,7 +197,7 @@ export class DashboardPanel {
 function getRenderHash(state: unknown): string {
   return createHash("sha256")
     .update(JSON.stringify(state, (_key, value: unknown) => {
-      if (_key === "lastUpdatedIso" || _key === "capturedAtIso" || _key === "currentCapturedAtIso" || _key === "lastChangedIso") {
+      if (_key === "capturedAtIso" || _key === "currentCapturedAtIso") {
         return "<volatile-time>";
       }
       return value;

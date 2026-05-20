@@ -11,6 +11,7 @@ import "./graphGeometry.test";
 import "./graphViews.test";
 import "./importResolverIndex.test";
 import "./importParser.test";
+import "./layoutCache.test";
 import "./legacyRendererRemoval.test";
 import "./liveChangeInputs.test";
 import "./moduleRoleInference.test";

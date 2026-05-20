@@ -46,7 +46,8 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
   readonly onDidChangeState = this.changeEmitter.event;
 
   private state = createMockDashboardState();
-  private refreshing: Promise<DashboardState> | undefined;
+  private refreshLoop: Promise<DashboardState> | undefined;
+  private pendingRefreshRequest: RefreshRequest | undefined;
   private readonly fileAnalysisCache = new FileAnalysisCache();
   private readonly workspaceIndexes = new Map<string, WorkspaceIndex>();
 
@@ -61,11 +62,36 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
   }
 
   async refresh(request?: DashboardMode | RefreshRequest, selectedFeatureId?: string): Promise<DashboardState> {
-    if (this.refreshing) {
-      return this.refreshing;
-    }
     const refreshRequest = normalizeRefreshRequest(request, selectedFeatureId);
+    this.pendingRefreshRequest = mergeRefreshRequests(this.pendingRefreshRequest, refreshRequest);
+    if (this.refreshLoop) {
+      logInfo(
+        `refresh queued: changedPaths=${refreshRequest.changedPaths?.length ?? 0}, deletedPaths=${refreshRequest.deletedPaths?.length ?? 0}, mode=${refreshRequest.mode ?? "auto"}`
+      );
+      return this.refreshLoop;
+    }
 
+    this.refreshLoop = this.runRefreshLoop()
+      .finally(() => {
+        this.refreshLoop = undefined;
+      });
+
+    return this.refreshLoop;
+  }
+
+  private async runRefreshLoop(): Promise<DashboardState> {
+    let latestState = this.state;
+
+    while (this.pendingRefreshRequest) {
+      const refreshRequest = this.pendingRefreshRequest;
+      this.pendingRefreshRequest = undefined;
+      latestState = await this.performRefresh(refreshRequest);
+    }
+
+    return latestState;
+  }
+
+  private async performRefresh(refreshRequest: RefreshRequest): Promise<DashboardState> {
     this.state = {
       ...this.state,
       isLoading: true,
@@ -77,7 +103,7 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
     };
     this.changeEmitter.fire(this.state);
 
-    this.refreshing = this.buildState(refreshRequest)
+    return this.buildState(refreshRequest)
       .catch((error: unknown) => {
         const reason = error instanceof Error ? error.message : "Unknown analysis error.";
         logInfo(`analysis error: ${reason}`);
@@ -94,12 +120,7 @@ export class LiveArchitectureStateManager implements vscode.Disposable {
         this.state = state;
         this.changeEmitter.fire(state);
         return state;
-      })
-      .finally(() => {
-        this.refreshing = undefined;
       });
-
-    return this.refreshing;
   }
 
   setMode(mode: DashboardMode, selectedFeatureId?: string): DashboardState {
@@ -724,6 +745,34 @@ function normalizeRefreshRequest(request: DashboardMode | RefreshRequest | undef
   return {
     ...request,
     selectedFeatureId: request.selectedFeatureId ?? selectedFeatureId
+  };
+}
+
+function mergeRefreshRequests(
+  current: RefreshRequest | undefined,
+  incoming: RefreshRequest
+): RefreshRequest {
+  if (!current) {
+    return {
+      ...incoming,
+      changedPaths: normalizeChangedPaths(incoming.changedPaths ?? []),
+      deletedPaths: normalizeChangedPaths(incoming.deletedPaths ?? [])
+    };
+  }
+
+  return {
+    mode: incoming.mode ?? current.mode,
+    selectedFeatureId: incoming.selectedFeatureId ?? current.selectedFeatureId,
+    changedPaths: normalizeChangedPaths([
+      ...(current.changedPaths ?? []),
+      ...(incoming.changedPaths ?? [])
+    ]),
+    deletedPaths: normalizeChangedPaths([
+      ...(current.deletedPaths ?? []),
+      ...(incoming.deletedPaths ?? [])
+    ]),
+    manualFullRefresh: Boolean(current.manualFullRefresh || incoming.manualFullRefresh),
+    cacheInvalidated: Boolean(current.cacheInvalidated || incoming.cacheInvalidated)
   };
 }
 
