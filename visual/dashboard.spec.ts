@@ -41,7 +41,7 @@ const visualTargets: VisualTarget[] = [
       "risk-card-low",
       "architecture-impact-graph",
       "changed-files-table",
-      "dependency-graph",
+      "dependency-details",
       "suggested-validation",
       "before-after-structure",
       "validation-status-row"
@@ -124,6 +124,13 @@ for (const target of visualTargets) {
     await expect(page.getByTestId("graph-layout-loading")).toHaveCount(0, { timeout: 10000 });
     await expect(page.locator("svg.graph-svg"), "legacy SVG graph stage should not be used by React standalone render").toHaveCount(0);
 
+    if (target.name === "live changes") {
+      const graphTop = (await page.getByTestId("architecture-impact-graph").boundingBox())?.y ?? Number.POSITIVE_INFINITY;
+      const currentAreaTop = (await page.getByTestId("current-change-area").boundingBox())?.y ?? 0;
+      expect(graphTop, "Codex Review should render the work impact graph before text cards").toBeLessThan(currentAreaTop);
+      await expect(page.getByTestId("dependency-graph"), "Dependency graph should be hidden in closed advanced details by default").toHaveCount(0);
+    }
+
     const graphCanvases = page.getByTestId("react-flow-canvas");
     const graphCount = await graphCanvases.count();
     expect(graphCount, "React Flow canvases should be rendered").toBeGreaterThan(0);
@@ -135,13 +142,21 @@ for (const target of visualTargets) {
       expect(graphBox, `React Flow canvas ${index} should have a bounding box`).not.toBeNull();
       expect(graphBox?.width ?? 0).toBeGreaterThan(320);
       expect(graphBox?.height ?? 0).toBeGreaterThan(320);
-      expect(await canvas.locator(".react-flow__node").count(), `React Flow canvas ${index} should have visible nodes`).toBeGreaterThan(0);
+      const initialNodeCount = await canvas.locator(".react-flow__node").count();
+      expect(initialNodeCount, `React Flow canvas ${index} should have visible nodes`).toBeGreaterThan(0);
       expect(await canvas.locator(".react-flow__edge").count(), `React Flow canvas ${index} should have visible edges`).toBeGreaterThan(0);
       await expect(canvas.getByTestId("graph-legend"), `React Flow canvas ${index} should show a graph legend`).toBeVisible();
       const legendBox = await canvas.getByTestId("graph-legend").boundingBox();
       expect(legendBox, `React Flow canvas ${index} legend should have a bounding box`).not.toBeNull();
       expect(legendBox?.width ?? 0).toBeGreaterThan(120);
       expect(legendBox?.height ?? 0).toBeGreaterThan(80);
+      const expandButtons = canvas.locator(".graph-expand-button");
+      if (await expandButtons.count() > 0) {
+        await expandButtons.first().click();
+        await expect.poll(async () => canvas.locator(".react-flow__node").count(), {
+          message: `React Flow canvas ${index} expand button should reveal additional nodes`
+        }).toBeGreaterThan(initialNodeCount);
+      }
       const verticallyClippedNodes = await canvas.locator(".graph-node").evaluateAll((nodes) => nodes
         .filter((node) => node.scrollHeight > node.clientHeight + 2)
         .map((node) => node.textContent?.trim().replace(/\s+/g, " ").slice(0, 120) ?? "unlabelled node"));

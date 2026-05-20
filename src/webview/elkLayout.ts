@@ -103,7 +103,8 @@ export async function layoutGraphWithElk(
 }
 
 function supportsWholeArchitectureLayerLayout(view: GraphViewModel): boolean {
-  return view.target === "wholeArchitecture" && view.nodes.some((node) => node.kind === "layer");
+  return (view.target === "wholeArchitecture" || view.target === "liveImpact")
+    && view.nodes.some((node) => node.kind === "layer");
 }
 
 function elkLayoutOptions(layoutMode: GraphLayoutMode): Record<string, string> {

@@ -10,6 +10,7 @@ import {
   DependencyEdge,
   ModuleNode
 } from "../webview/dashboardState";
+import { isTestPath } from "./featureMapper";
 import { shouldExcludePath } from "./scanPathFilter";
 
 export interface ArchitectureFactsScanConfig {
@@ -55,6 +56,8 @@ const FACT_SCAN_GLOBS = [
   "**/*.py"
 ] as const;
 
+const TEST_FACT_PATTERN = /(^|[\/._\-\s])(tests?|pytest|gtest|rostest)([\/._\-\s]|$)|(^|[\/])test[_-]|[_-]test(\.|$)|\.spec\./i;
+
 export async function scanArchitectureFacts(
   folder: vscode.WorkspaceFolder,
   config: ArchitectureFactsScanConfig
@@ -88,12 +91,14 @@ export async function scanArchitectureFacts(
   collectModuleImportFacts(accumulator, config.modules, config.dependencies);
   deriveCommandFlowFacts(accumulator);
 
-  const entities = [...accumulator.entities.values()]
+  const filteredEntities = [...accumulator.entities.values()]
+    .filter((entity) => !isTestRelatedArchitectureEntity(entity));
+  const entities = filteredEntities
     .sort((left, right) => entityKindRank(left.kind) - entityKindRank(right.kind) || left.label.localeCompare(right.label))
     .slice(0, MAX_GRAPH_FACTS);
   const visibleEntityIds = new Set(entities.map((entity) => entity.id));
   const relations = [...accumulator.relations.values()]
-    .filter((relation) => visibleEntityIds.has(relation.source) && visibleEntityIds.has(relation.target))
+    .filter((relation) => visibleEntityIds.has(relation.source) && visibleEntityIds.has(relation.target) && !isTestRelatedArchitectureRelation(relation))
     .sort((left, right) => relationKindRank(left.kind) - relationKindRank(right.kind) || left.id.localeCompare(right.id))
     .slice(0, MAX_GRAPH_FACTS);
 
@@ -121,7 +126,7 @@ async function findFactFiles(
     );
     for (const uri of found) {
       const relativePath = normalizeRelativePath(folder.uri, uri);
-      if (!shouldExcludePath(relativePath, config.excludeGlobs)) {
+      if (!shouldExcludePath(relativePath, config.excludeGlobs) && !isTestRelatedPath(relativePath)) {
         byPath.set(relativePath, uri);
       }
     }
@@ -688,6 +693,25 @@ function normalizeRelativePath(rootUri: vscode.Uri, uri: vscode.Uri): string {
   const rootPath = rootUri.fsPath.replaceAll("\\", "/").replace(/\/+$/, "");
   const filePath = uri.fsPath.replaceAll("\\", "/");
   return filePath.startsWith(`${rootPath}/`) ? filePath.slice(rootPath.length + 1) : filePath;
+}
+
+function isTestRelatedPath(relativePath: string): boolean {
+  return isTestPath(relativePath) || TEST_FACT_PATTERN.test(relativePath.replaceAll("\\", "/"));
+}
+
+function isTestRelatedArchitectureEntity(entity: ArchitectureFactEntity): boolean {
+  return [
+    entity.id,
+    entity.label,
+    entity.detail,
+    entity.path,
+    ...Object.values(entity.metadata ?? {}).flatMap((value) => Array.isArray(value) ? value : [String(value)])
+  ].some((value) => typeof value === "string" && TEST_FACT_PATTERN.test(value));
+}
+
+function isTestRelatedArchitectureRelation(relation: ArchitectureFactRelation): boolean {
+  return [relation.id, relation.source, relation.target, relation.evidence]
+    .some((value) => TEST_FACT_PATTERN.test(value));
 }
 
 function buildExcludePattern(excludeGlobs: string[]): string | undefined {

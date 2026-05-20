@@ -225,6 +225,27 @@ p {
   grid-column: 1 / -1;
 }
 
+.advanced-graph-details {
+  grid-column: 1 / -1;
+  min-height: 54px;
+  border: 1px solid #2d3945;
+  border-radius: 8px;
+  background: #151c23;
+  padding: 12px 14px;
+}
+
+.advanced-graph-details summary {
+  cursor: pointer;
+  color: #d8e2ec;
+}
+
+.advanced-graph-details .graph-card {
+  margin-top: 12px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
 .graph-card-header {
   display: flex;
   align-items: flex-start;
@@ -305,6 +326,7 @@ p {
 }
 
 .graph-node {
+  position: relative;
   width: 100%;
   height: 100%;
   display: grid;
@@ -316,6 +338,33 @@ p {
   background: #16202a;
   color: #e7edf4;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.graph-node.expandable {
+  padding-right: 42px;
+}
+
+.graph-expand-button {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 25px;
+  min-width: 25px;
+  height: 25px;
+  min-height: 25px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  padding: 0;
+  border-color: #587185;
+  background: #101820;
+  color: #dce8f2;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.graph-expand-button:hover {
+  background: #1e2b36;
 }
 
 .graph-node strong,
@@ -424,6 +473,11 @@ p {
   background: #2a1d15;
 }
 
+.graph-node-file {
+  border-color: #7aa2c7;
+  background: #151f2a;
+}
+
 .graph-node-module {
   background: #151f24;
 }
@@ -442,6 +496,24 @@ p {
 
 .graph-node.risk-low {
   border-color: #69c989;
+}
+
+.graph-node.emphasis-active {
+  box-shadow: 0 0 0 2px #77b7ff, 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.graph-node.emphasis-changed {
+  box-shadow: 0 0 0 2px #f2c56d, 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.graph-node.emphasis-neighbor {
+  border-style: dashed;
+}
+
+.graph-node.emphasis-stale {
+  border-style: dashed;
+  box-shadow: 0 0 0 2px #a7b2bd, 0 10px 22px rgba(0, 0, 0, 0.22);
+  opacity: 0.88;
 }
 
 .graph-node-badges {
@@ -621,6 +693,11 @@ p {
 .graph-legend-node-action {
   border-color: #ffae7a;
   background: #2a1d15;
+}
+
+.graph-legend-node-file {
+  border-color: #7aa2c7;
+  background: #151f2a;
 }
 
 .graph-legend-node-module {

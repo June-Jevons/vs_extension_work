@@ -9,6 +9,7 @@ export type WebviewToExtensionMessage =
   | { type: "showDiffSinceBaseline" }
   | { type: "exportSnapshot" }
   | { type: "configure" }
+  | { type: "openWorkspaceFile"; path: string }
   | { type: "focusTimeline"; available: boolean }
   | { type: "selectionState"; active: boolean };
 
@@ -34,6 +35,8 @@ export function isWebviewToExtensionMessage(value: unknown): value is WebviewToE
       return typeof value.available === "boolean";
     case "selectionState":
       return typeof value.active === "boolean";
+    case "openWorkspaceFile":
+      return typeof value.path === "string" && value.path.length > 0 && value.path.length < 500 && !value.path.includes("\0");
     case "setMode":
       return isDashboardMode(value.mode);
     case "selectFeature":

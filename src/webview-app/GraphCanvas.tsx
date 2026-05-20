@@ -20,14 +20,20 @@ import {
 } from "../webview/elkLayout";
 import { GraphNodeKind, GraphSemanticEdgeKind, GraphViewEdge, GraphViewModel, GraphViewNode } from "../webview/graphViewModel";
 import { getCachedLayout, storeCachedLayout } from "./layoutCache";
+import { postToExtension } from "./vscodeApi";
 
 interface GraphCanvasProps {
   view: GraphViewModel;
   testId: string;
+  expandedKeys?: readonly string[];
+  onToggleExpansion?: (key: string) => void;
 }
 
 type FlowNodeData = {
   graphNode: GraphViewNode;
+  expandable: boolean;
+  expanded: boolean;
+  onToggleExpansion?: (key: string) => void;
 };
 
 type FlowNode = Node<FlowNodeData>;
@@ -53,13 +59,17 @@ const nodeTypes = {
   config: GraphNodeCard,
   data: GraphNodeCard,
   action: GraphNodeCard,
+  file: GraphNodeCard,
   module: GraphNodeCard,
   summary: GraphNodeCard
 };
 
-export function GraphCanvas({ view, testId }: GraphCanvasProps): React.JSX.Element {
-  const layoutOptions = useMemo(() => getAvailableGraphLayoutModeOptions(view), [view]);
-  const defaultLayoutMode = useMemo(() => getDefaultGraphLayoutMode(view), [view]);
+export function GraphCanvas({ view, testId, expandedKeys = [], onToggleExpansion }: GraphCanvasProps): React.JSX.Element {
+  const expandedKeySet = useMemo(() => new Set(expandedKeys), [expandedKeys]);
+  const visibleView = useMemo(() => applyGraphExpansion(view, expandedKeySet), [expandedKeySet, view]);
+  const expandableKeys = useMemo(() => getExpandableKeys(view), [view]);
+  const layoutOptions = useMemo(() => getAvailableGraphLayoutModeOptions(visibleView), [visibleView]);
+  const defaultLayoutMode = useMemo(() => getDefaultGraphLayoutMode(visibleView), [visibleView]);
   const [layoutMode, setLayoutMode] = useState<GraphLayoutMode>(defaultLayoutMode);
   const effectiveLayoutMode = layoutOptions.some((option) => option.id === layoutMode) ? layoutMode : defaultLayoutMode;
 
@@ -90,17 +100,35 @@ export function GraphCanvas({ view, testId }: GraphCanvasProps): React.JSX.Eleme
               ))}
             </select>
           </label>
-          <span className="graph-stat-pill">{view.nodes.length} nodes / {view.edges.length} edges</span>
+          <span className="graph-stat-pill">{visibleView.nodes.length} nodes / {visibleView.edges.length} edges</span>
         </div>
       </div>
       <ReactFlowProvider>
-        <LaidOutGraph view={view} layoutMode={effectiveLayoutMode} />
+        <LaidOutGraph
+          view={visibleView}
+          layoutMode={effectiveLayoutMode}
+          expandedKeys={expandedKeySet}
+          expandableKeys={expandableKeys}
+          onToggleExpansion={onToggleExpansion}
+        />
       </ReactFlowProvider>
     </section>
   );
 }
 
-function LaidOutGraph({ view, layoutMode }: { view: GraphViewModel; layoutMode: GraphLayoutMode }): React.JSX.Element {
+function LaidOutGraph({
+  view,
+  layoutMode,
+  expandedKeys,
+  expandableKeys,
+  onToggleExpansion
+}: {
+  view: GraphViewModel;
+  layoutMode: GraphLayoutMode;
+  expandedKeys: ReadonlySet<string>;
+  expandableKeys: ReadonlySet<string>;
+  onToggleExpansion?: (key: string) => void;
+}): React.JSX.Element {
   const [layout, setLayout] = useState<GraphViewModel | undefined>(() => getCachedLayout(view, layoutMode));
   const [error, setError] = useState<string | undefined>();
 
@@ -135,7 +163,10 @@ function LaidOutGraph({ view, layoutMode }: { view: GraphViewModel; layoutMode: 
     };
   }, [view, layoutMode]);
 
-  const nodes = useMemo(() => layout ? toFlowNodes(layout) : [], [layout]);
+  const nodes = useMemo(
+    () => layout ? toFlowNodes(layout, expandedKeys, expandableKeys, onToggleExpansion) : [],
+    [expandableKeys, expandedKeys, layout, onToggleExpansion]
+  );
   const edges = useMemo(() => layout ? toFlowEdges(layout) : [], [layout]);
 
   if (error) {
@@ -165,6 +196,12 @@ function LaidOutGraph({ view, layoutMode }: { view: GraphViewModel; layoutMode: 
         elementsSelectable
         fitViewOptions={{ padding: 0.18 }}
         proOptions={{ hideAttribution: true }}
+        onNodeDoubleClick={(_event, node) => {
+          const graphNode = (node.data as FlowNodeData).graphNode;
+          if (graphNode.openPath) {
+            postToExtension({ type: "openWorkspaceFile", path: graphNode.openPath });
+          }
+        }}
       >
         <Background color="#30404d" gap={22} />
         <MiniMap
@@ -232,8 +269,22 @@ function GraphNodeCard({ data }: NodeProps<FlowNode>): React.JSX.Element {
     node.riskLevel ? `${node.riskLevel} risk` : undefined
   ].filter((item): item is string => Boolean(item));
   return (
-    <div className={`graph-node graph-node-${node.kind} risk-${node.riskLevel ?? "none"}`}>
+    <div className={`graph-node graph-node-${node.kind} risk-${node.riskLevel ?? "none"}${node.emphasis ? ` emphasis-${node.emphasis}` : ""}${data.expandable ? " expandable" : ""}`}>
       <Handle className="graph-handle" type="target" position={Position.Left} />
+      {data.expandable && node.expansionKey ? (
+        <button
+          aria-label={`${data.expanded ? "Collapse" : "Expand"} ${node.label}`}
+          className="graph-expand-button"
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onToggleExpansion?.(node.expansionKey!);
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          {data.expanded ? "-" : "+"}
+        </button>
+      ) : null}
       <strong>{node.label}</strong>
       {node.role ? <em>{node.role}</em> : null}
       <span>{node.detail}</span>
@@ -250,7 +301,12 @@ function GraphNodeCard({ data }: NodeProps<FlowNode>): React.JSX.Element {
   );
 }
 
-function toFlowNodes(view: GraphViewModel): FlowNode[] {
+function toFlowNodes(
+  view: GraphViewModel,
+  expandedKeys: ReadonlySet<string>,
+  expandableKeys: ReadonlySet<string>,
+  onToggleExpansion?: (key: string) => void
+): FlowNode[] {
   return view.nodes.map((node) => ({
     id: node.id,
     type: node.kind,
@@ -259,7 +315,10 @@ function toFlowNodes(view: GraphViewModel): FlowNode[] {
       y: node.y ?? 0
     },
     data: {
-      graphNode: node
+      graphNode: node,
+      expandable: Boolean(node.expansionKey && expandableKeys.has(node.expansionKey)),
+      expanded: Boolean(node.expansionKey && expandedKeys.has(node.expansionKey)),
+      onToggleExpansion
     },
     width: node.width,
     height: node.height,
@@ -269,6 +328,50 @@ function toFlowNodes(view: GraphViewModel): FlowNode[] {
     },
     draggable: false
   }));
+}
+
+function applyGraphExpansion(view: GraphViewModel, expandedKeys: ReadonlySet<string>): GraphViewModel {
+  const nodesByExpansionKey = new Map(view.nodes
+    .filter((node) => node.expansionKey)
+    .map((node) => [node.expansionKey!, node]));
+  const visibleNodes = view.nodes.filter((node) => isGraphNodeVisible(node, expandedKeys, nodesByExpansionKey));
+  const visibleIds = new Set(visibleNodes.map((node) => node.id));
+  return {
+    ...view,
+    nodes: visibleNodes,
+    edges: view.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target))
+  };
+}
+
+function isGraphNodeVisible(
+  node: GraphViewNode,
+  expandedKeys: ReadonlySet<string>,
+  nodesByExpansionKey: ReadonlyMap<string, GraphViewNode>
+): boolean {
+  if (!node.expansionParentKey) {
+    return node.defaultVisible !== false;
+  }
+
+  let parentKey: string | undefined = node.expansionParentKey;
+  while (parentKey) {
+    if (!expandedKeys.has(parentKey)) {
+      return false;
+    }
+    const parentNode = nodesByExpansionKey.get(parentKey);
+    parentKey = parentNode?.expansionParentKey;
+  }
+
+  return true;
+}
+
+function getExpandableKeys(view: GraphViewModel): ReadonlySet<string> {
+  const expandableKeys = new Set<string>();
+  for (const node of view.nodes) {
+    if (node.expansionParentKey) {
+      expandableKeys.add(node.expansionParentKey);
+    }
+  }
+  return expandableKeys;
 }
 
 function toFlowEdges(view: GraphViewModel): Edge[] {
@@ -357,6 +460,7 @@ const blockLegendItems: Array<LegendItem<GraphNodeKind>> = [
   { id: "config", label: "Config", detail: "Runtime configuration dependency" },
   { id: "data", label: "Data", detail: "Data, state, or output node" },
   { id: "action", label: "Action", detail: "ROS action" },
+  { id: "file", label: "File", detail: "Changed or opened workspace file" },
   { id: "module", label: "Module", detail: "Individual runtime module" },
   { id: "summary", label: "Summary", detail: "Diagnostic or unclassified summary" }
 ];

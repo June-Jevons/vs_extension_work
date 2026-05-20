@@ -1,5 +1,7 @@
 import {
   ArchitectureFactEntity,
+  ArchitectureFactRelation,
+  ChangedFile,
   ArchitectureRelationKind,
   DashboardState,
   DependencyEdge,
@@ -44,8 +46,15 @@ export type GraphNodeKind =
   | "config"
   | "data"
   | "action"
+  | "file"
   | "module"
   | "summary";
+
+export type GraphNodeEmphasis =
+  | "active"
+  | "changed"
+  | "neighbor"
+  | "stale";
 
 export type GraphSemanticEdgeKind =
   | "starts"
@@ -89,6 +98,12 @@ export interface GraphViewNode {
   moduleIds?: string[];
   badges?: string[];
   primaryPaths?: string[];
+  expansionKey?: string;
+  expansionParentKey?: string;
+  expansionLevel?: number;
+  defaultVisible?: boolean;
+  emphasis?: GraphNodeEmphasis;
+  openPath?: string;
   x?: number;
   y?: number;
 }
@@ -108,6 +123,10 @@ interface VisibleArchitectureState {
   dependencies: DependencyEdge[];
   featureBlocks: FeatureBlock[];
 }
+
+const MAX_EXPANDED_DETAIL_NODES = 20;
+const RETAINED_CODEX_CONTEXT_DIAGNOSTIC = "Last detected Codex context retained in this webview session.";
+const TEST_FACT_PATTERN = /(^|[\/._\-\s])(tests?|pytest|gtest|rostest)([\/._\-\s]|$)|(^|[\/])test[_-]|[_-]test(\.|$)|\.spec\./i;
 
 export function buildGraphViewForTarget(
   state: DashboardState,
@@ -131,6 +150,9 @@ export function buildGraphViewForTarget(
 export function buildWholeArchitectureSemanticGraph(state: DashboardState): GraphViewModel {
   const visible = getVisibleArchitectureState(state);
   const workspaceName = state.snapshot.workspaceName || state.workspace.name;
+  const changedFeatureIds = new Set(state.snapshot.changedFiles
+    .map((file) => file.featureId)
+    .filter((featureId): featureId is string => Boolean(featureId)));
   const systemNode: GraphViewNode = {
     id: "system:workspace",
     label: "Workspace / System",
@@ -167,7 +189,8 @@ export function buildWholeArchitectureSemanticGraph(state: DashboardState): Grap
       height: 116,
       layer,
       moduleCount: layerModuleIds.size,
-      role: "Runtime layer"
+      role: "Runtime layer",
+      defaultVisible: true
     });
     edges.push(edge("contains", "system:workspace", layerId, "contains", "feature", "high"));
 
@@ -175,31 +198,49 @@ export function buildWholeArchitectureSemanticGraph(state: DashboardState): Grap
       const definition = getSemanticFeatureDefinition(feature.id);
       const featureModules = modulesForFeature(feature, visible.modules);
       const featureNodeId = featureNodeIdFor(feature.id);
-      nodes.push(featureToSemanticNode(feature, featureModules, state, definition, layer));
+      const featureExpansionKey = expansionKeyForFeature(feature.id);
+      nodes.push({
+        ...featureToSemanticNode(feature, featureModules, state, definition, layer),
+        expansionKey: featureExpansionKey,
+        expansionLevel: 0,
+        defaultVisible: true,
+        emphasis: changedFeatureIds.has(feature.id) ? "changed" : undefined
+      });
       edges.push(edge("contains", layerId, featureNodeId, "contains", "feature", "high"));
 
       for (const summaryNode of buildRuntimeRoleSummaryNodes(feature, featureModules, visible.dependencies, definition)) {
-        nodes.push(summaryNode);
+        const roleExpansionKey = expansionKeyForRole(feature.id, summaryNode.role ?? summaryNode.id);
+        nodes.push({
+          ...summaryNode,
+          expansionKey: roleExpansionKey,
+          expansionParentKey: featureExpansionKey,
+          expansionLevel: 1,
+          defaultVisible: false
+        });
         edges.push(edge("contains", featureNodeId, summaryNode.id, "contains", "feature", summaryNode.badges?.includes("low confidence") ? "low" : "medium"));
+
+        for (const detailNode of buildRuntimeRoleDetailNodes(roleExpansionKey, summaryNode, featureModules)) {
+          nodes.push(detailNode);
+          edges.push(edge("contains", summaryNode.id, detailNode.id, "contains", "feature", detailNode.badges?.includes("more") ? "low" : "medium"));
+        }
       }
     }
   }
 
   addSemanticArchitectureEdges(edges, visible);
-  addImportInferredFeatureEdges(edges, visible);
-  addArchitectureFactGraph(nodes, edges, state);
+  addCollapsedArchitectureFactGraph(nodes, edges, state);
 
   return ensureNonEmpty(pruneDanglingEdges({
     id: "whole-architecture",
-    title: "Whole Architecture",
-    description: "Semantic runtime architecture organized by system, layers, feature blocks, and module roles.",
+    title: "Whole Architecture Overview",
+    description: "Collapsed runtime architecture by system, layers, and feature blocks. Expand blocks for role, module, and ROS details.",
     target: "wholeArchitecture",
     nodes,
     edges
   }));
 }
 
-function addArchitectureFactGraph(nodes: GraphViewNode[], edges: GraphViewEdge[], state: DashboardState): void {
+function addCollapsedArchitectureFactGraph(nodes: GraphViewNode[], edges: GraphViewEdge[], state: DashboardState): void {
   const facts = state.snapshot.architectureFacts;
   if (facts.entities.length === 0) {
     return;
@@ -210,31 +251,81 @@ function addArchitectureFactGraph(nodes: GraphViewNode[], edges: GraphViewEdge[]
     return;
   }
 
-  const layerId = "layer:ros-runtime-facts";
-  if (!nodes.some((node) => node.id === layerId)) {
+  const summaryId = "ros-runtime-facts";
+  const summaryExpansionKey = "ros:facts";
+  nodes.push({
+    id: summaryId,
+    label: "ROS Runtime Facts",
+    detail: `${factEntities.length} ROS runtime facts grouped by type. Expand for evidence.`,
+    kind: "summary",
+    width: 300,
+    height: 148,
+    role: "Evidence-based ROS2 runtime graph",
+    moduleCount: factEntities.length,
+    badges: ["collapsed", "facts"],
+    expansionKey: summaryExpansionKey,
+    expansionLevel: 0,
+    defaultVisible: true
+  });
+  edges.push(edge("contains", "system:workspace", summaryId, "contains", "architecture", "high"));
+
+  const grouped = groupArchitectureFactsByKind(factEntities);
+  const entityIds = new Set(factEntities.map((entity) => entity.id));
+  for (const [kind, entities] of grouped) {
+    const groupId = `ros-facts:${kind}`;
+    const groupExpansionKey = `ros:facts:${kind}`;
     nodes.push({
-      id: layerId,
-      label: "ROS Runtime Facts",
-      detail: `${factEntities.length} package, launch, node, topic, service, action, and config facts`,
-      kind: "layer",
-      width: 300,
-      height: 122,
-      role: "Evidence-based ROS2 runtime graph",
-      moduleCount: factEntities.length,
-      badges: ["facts"]
+      id: groupId,
+      label: `${architectureFactKindLabel(kind)} Facts`,
+      detail: `${entities.length} ${kind} fact${entities.length === 1 ? "" : "s"}`,
+      kind: architectureEntityKindToNodeKind(kind),
+      width: 280,
+      height: 118,
+      role: "ROS fact group",
+      moduleCount: entities.length,
+      badges: [kind],
+      expansionKey: groupExpansionKey,
+      expansionParentKey: summaryExpansionKey,
+      expansionLevel: 1,
+      defaultVisible: false
     });
-    edges.push(edge("contains", "system:workspace", layerId, "contains", "feature", "high"));
+    edges.push(edge("contains", summaryId, groupId, "contains", "architecture", "medium"));
+
+    const shownEntities = entities.slice(0, MAX_EXPANDED_DETAIL_NODES);
+    for (const entity of shownEntities) {
+      const graphNode = {
+        ...architectureEntityToNode(entity),
+        expansionParentKey: groupExpansionKey,
+        expansionLevel: 2,
+        defaultVisible: false,
+        openPath: entity.path
+      };
+      nodes.push(graphNode);
+      edges.push(edge("contains", groupId, graphNode.id, "contains", "architecture", entity.confidence));
+    }
+
+    const hiddenCount = entities.length - shownEntities.length;
+    if (hiddenCount > 0) {
+      const moreId = `${groupId}:more`;
+      nodes.push({
+        id: moreId,
+        label: `+${hiddenCount} more ${kind} facts`,
+        detail: "Additional ROS facts are hidden to keep the expanded graph readable.",
+        kind: "summary",
+        width: 260,
+        height: 104,
+        role: "Hidden fact summary",
+        moduleCount: hiddenCount,
+        badges: ["more"],
+        expansionParentKey: groupExpansionKey,
+        expansionLevel: 2,
+        defaultVisible: false
+      });
+      edges.push(edge("contains", groupId, moreId, "contains", "architecture", "low"));
+    }
   }
 
-  const entityIds = new Set<string>();
-  for (const entity of factEntities) {
-    const graphNode = architectureEntityToNode(entity);
-    entityIds.add(entity.id);
-    nodes.push(graphNode);
-    edges.push(edge("contains", layerId, graphNode.id, "contains", "architecture", entity.confidence));
-  }
-
-  for (const relation of facts.relations) {
+  for (const relation of facts.relations.filter((candidate) => !isTestRelatedArchitectureRelation(candidate))) {
     if (!entityIds.has(relation.source) || !entityIds.has(relation.target)) {
       continue;
     }
@@ -251,9 +342,59 @@ function addArchitectureFactGraph(nodes: GraphViewNode[], edges: GraphViewEdge[]
 }
 
 function selectArchitectureFactEntities(entities: readonly ArchitectureFactEntity[]): ArchitectureFactEntity[] {
-  const packages = entities.filter((entity) => entity.kind === "package").slice(0, 24);
-  const runtimeFacts = entities.filter((entity) => entity.kind !== "package" && entity.kind !== "module").slice(0, 96);
+  const visibleEntities = entities.filter((entity) => !isTestRelatedArchitectureEntity(entity));
+  const packages = visibleEntities.filter((entity) => entity.kind === "package").slice(0, 24);
+  const runtimeFacts = visibleEntities.filter((entity) => entity.kind !== "package" && entity.kind !== "module").slice(0, 96);
   return [...packages, ...runtimeFacts];
+}
+
+function groupArchitectureFactsByKind(
+  entities: readonly ArchitectureFactEntity[]
+): Array<[ArchitectureFactEntity["kind"], ArchitectureFactEntity[]]> {
+  const groups = new Map<ArchitectureFactEntity["kind"], ArchitectureFactEntity[]>();
+  for (const entity of entities) {
+    const current = groups.get(entity.kind) ?? [];
+    current.push(entity);
+    groups.set(entity.kind, current);
+  }
+  return [...groups.entries()]
+    .sort((left, right) => entityKindRank(left[0]) - entityKindRank(right[0]) || left[0].localeCompare(right[0]));
+}
+
+function architectureFactKindLabel(kind: ArchitectureFactEntity["kind"]): string {
+  switch (kind) {
+    case "package":
+      return "Package";
+    case "launch":
+      return "Launch";
+    case "node":
+      return "Node";
+    case "topic":
+      return "Topic";
+    case "service":
+      return "Service";
+    case "action":
+      return "Action";
+    case "config":
+      return "Config";
+    case "module":
+      return "Module";
+  }
+}
+
+function isTestRelatedArchitectureEntity(entity: ArchitectureFactEntity): boolean {
+  return [
+    entity.id,
+    entity.label,
+    entity.detail,
+    entity.path,
+    ...Object.values(entity.metadata ?? {}).flatMap((value) => Array.isArray(value) ? value : [String(value)])
+  ].some((value) => typeof value === "string" && TEST_FACT_PATTERN.test(value));
+}
+
+function isTestRelatedArchitectureRelation(relation: ArchitectureFactRelation): boolean {
+  return [relation.id, relation.source, relation.target, relation.evidence]
+    .some((value) => TEST_FACT_PATTERN.test(value));
 }
 
 function architectureEntityToNode(entity: ArchitectureFactEntity): GraphViewNode {
@@ -268,7 +409,8 @@ function architectureEntityToNode(entity: ArchitectureFactEntity): GraphViewNode
     layer: "ROS Runtime Facts",
     moduleCount: 1,
     badges: [entity.confidence, entity.kind],
-    primaryPaths: entity.path ? [entity.path] : undefined
+    primaryPaths: entity.path ? [entity.path] : undefined,
+    openPath: entity.path
   };
 }
 
@@ -451,26 +593,130 @@ export function buildFeatureFocusSemanticGraph(
 
 function buildLiveImpactGraph(state: DashboardState): GraphViewModel {
   const visible = getVisibleArchitectureState(state);
-  const visibleModuleIds = new Set(visible.modules.map((moduleNode) => moduleNode.id));
+  const context = resolveCodexWorkContext(state, visible);
+  if (context.seedFeatureIds.size === 0) {
+    const overview = buildWholeArchitectureSemanticGraph(state);
+    return {
+      ...overview,
+      id: "codex-work-impact",
+      title: "Codex Work Impact",
+      description: "No active Codex change area is currently detected. Showing the collapsed architecture overview.",
+      target: "liveImpact"
+    };
+  }
+
+  const semanticSpecs = getSemanticArchitectureEdgeSpecs(visible);
   const visibleFeatureIds = new Set(visible.featureBlocks.map((feature) => feature.id));
-  const impactedIds = new Set(state.snapshot.impactedFeatures
-    .map((feature) => feature.featureId)
-    .filter((featureId) => visibleFeatureIds.has(featureId)));
-  for (const file of state.snapshot.changedFiles) {
-    if (file.featureId && visibleFeatureIds.has(file.featureId) && (!file.moduleId || visibleModuleIds.has(file.moduleId))) {
-      impactedIds.add(file.featureId);
+  const displayFeatureIds = new Set(context.seedFeatureIds);
+  for (const spec of semanticSpecs) {
+    if (context.seedFeatureIds.has(spec.sourceFeatureId) && visibleFeatureIds.has(spec.targetFeatureId)) {
+      displayFeatureIds.add(spec.targetFeatureId);
+    }
+    if (context.seedFeatureIds.has(spec.targetFeatureId) && visibleFeatureIds.has(spec.sourceFeatureId)) {
+      displayFeatureIds.add(spec.sourceFeatureId);
     }
   }
 
-  const features = visible.featureBlocks.filter((feature) => impactedIds.has(feature.id));
-  const featureIds = new Set(features.map((feature) => feature.id));
-  const nodes = features.map(featureToNode);
-  const edges = buildFeatureEdges(visible.dependencies, visible.modules, featureIds);
+  const workspaceName = state.snapshot.workspaceName || state.workspace.name;
+  const systemNode: GraphViewNode = {
+    id: "codex:work",
+    label: context.stale ? "Last Detected Codex Work" : "Codex Work",
+    detail: context.intent || `${workspaceName}: current change impact`,
+    kind: "system",
+    width: 340,
+    height: 140,
+    role: context.stale ? "Last detected context" : "Current change context",
+    changedFileCount: context.changedFiles.length,
+    badges: context.stale ? ["last detected"] : ["active"],
+    emphasis: context.stale ? "stale" : "active"
+  };
+  const nodes: GraphViewNode[] = [systemNode];
+  const edges: GraphViewEdge[] = [];
+  const layers = new Map<string, FeatureBlock[]>();
+
+  for (const feature of visible.featureBlocks.filter((feature) => displayFeatureIds.has(feature.id))) {
+    const definition = getSemanticFeatureDefinition(feature.id);
+    const layer = definition?.layer ?? "Runtime / Other";
+    const layerFeatures = layers.get(layer) ?? [];
+    layerFeatures.push(feature);
+    layers.set(layer, layerFeatures);
+  }
+
+  for (const [layer, features] of [...layers.entries()].sort((left, right) => layerRank(left[0]) - layerRank(right[0]) || left[0].localeCompare(right[0]))) {
+    const layerId = `codex:${layerNodeId(layer)}`;
+    const layerModuleIds = new Set(features.flatMap((feature) => feature.moduleIds));
+    nodes.push({
+      id: layerId,
+      label: layer,
+      detail: `${features.length} related feature blocks, ${layerModuleIds.size} runtime modules`,
+      kind: "layer",
+      width: 280,
+      height: 116,
+      layer,
+      moduleCount: layerModuleIds.size,
+      role: "Related architecture layer",
+      defaultVisible: true
+    });
+    edges.push(edge("contains", "codex:work", layerId, "contains", "feature", "high"));
+
+    for (const feature of features.sort((left, right) => left.label.localeCompare(right.label))) {
+      const definition = getSemanticFeatureDefinition(feature.id);
+      const featureModules = modulesForFeature(feature, visible.modules);
+      const featureNodeId = featureNodeIdFor(feature.id);
+      const featureExpansionKey = expansionKeyForFeature(feature.id);
+      const changedFiles = context.changedFilesByFeature.get(feature.id) ?? [];
+      nodes.push({
+        ...featureToSemanticNode(feature, featureModules, state, definition, layer),
+        detail: `${featureModules.length} runtime modules, ${changedFiles.length} changed. ${definition?.role ?? feature.description}`,
+        expansionKey: featureExpansionKey,
+        expansionLevel: 0,
+        defaultVisible: true,
+        emphasis: emphasisForCodexFeature(feature.id, context, displayFeatureIds),
+        badges: codexFeatureBadges(feature, changedFiles, context)
+      });
+      edges.push(edge("contains", layerId, featureNodeId, "contains", "feature", "high"));
+
+      if (changedFiles.length > 0) {
+        addChangedFileExpansionNodes(nodes, edges, feature, changedFiles, featureExpansionKey);
+      }
+
+      for (const summaryNode of buildRuntimeRoleSummaryNodes(feature, featureModules, visible.dependencies, definition)) {
+        const roleExpansionKey = expansionKeyForRole(feature.id, summaryNode.role ?? summaryNode.id);
+        nodes.push({
+          ...summaryNode,
+          expansionKey: roleExpansionKey,
+          expansionParentKey: featureExpansionKey,
+          expansionLevel: 1,
+          defaultVisible: false
+        });
+        edges.push(edge("contains", featureNodeId, summaryNode.id, "contains", "feature", summaryNode.badges?.includes("low confidence") ? "low" : "medium"));
+
+        for (const detailNode of buildRuntimeRoleDetailNodes(roleExpansionKey, summaryNode, featureModules)) {
+          nodes.push(detailNode);
+          edges.push(edge("contains", summaryNode.id, detailNode.id, "contains", "feature", detailNode.badges?.includes("more") ? "low" : "medium"));
+        }
+      }
+    }
+  }
+
+  for (const spec of semanticSpecs) {
+    if (!displayFeatureIds.has(spec.sourceFeatureId) || !displayFeatureIds.has(spec.targetFeatureId)) {
+      continue;
+    }
+    edges.push(edge(
+      spec.semanticKind,
+      featureNodeIdFor(spec.sourceFeatureId),
+      featureNodeIdFor(spec.targetFeatureId),
+      spec.semanticKind,
+      "feature",
+      spec.confidence
+    ));
+  }
 
   return ensureNonEmpty(pruneDanglingEdges({
-    id: "live-impact",
-    title: "Architecture Impact Graph",
-    description: "Changed and impacted runtime feature blocks linked by workspace imports.",
+    id: "codex-work-impact",
+    title: "Codex Work Impact",
+    description: "Current Codex change area in the larger architecture. Expand blocks for changed files, roles, and modules.",
     target: "liveImpact",
     nodes,
     edges
@@ -509,6 +755,203 @@ function buildLiveDependencyGraph(state: DashboardState): GraphViewModel {
     nodes,
     edges
   }));
+}
+
+interface CodexWorkContext {
+  activeFeatureId?: string;
+  seedFeatureIds: Set<string>;
+  changedFeatureIds: Set<string>;
+  changedFiles: ChangedFile[];
+  changedFilesByFeature: Map<string, ChangedFile[]>;
+  intent: string;
+  stale: boolean;
+}
+
+function resolveCodexWorkContext(state: DashboardState, visible: VisibleArchitectureState): CodexWorkContext {
+  const visibleFeatureIds = new Set(visible.featureBlocks.map((feature) => feature.id));
+  const visibleModuleIds = new Set(visible.modules.map((moduleNode) => moduleNode.id));
+  const visibleModulesByPath = new Map(visible.modules.map((moduleNode) => [normalizePath(moduleNode.path), moduleNode]));
+  const currentActivity = state.snapshot.codexActivity;
+  const changedFilesByPath = new Map(state.snapshot.changedFiles.map((file) => [normalizePath(file.path), file]));
+  const modifiedPaths = currentActivity.modifiedFiles.map(normalizePath);
+  const candidateFiles = modifiedPaths.length > 0
+    ? modifiedPaths.map((path) => {
+      const known = changedFilesByPath.get(path);
+      if (known) {
+        return known;
+      }
+      const moduleNode = visibleModulesByPath.get(path);
+      return moduleNode
+        ? {
+          path: moduleNode.path,
+          status: "modified" as const,
+          featureId: moduleNode.featureId,
+          moduleId: moduleNode.id,
+          riskLevel: moduleNode.riskLevel,
+          reason: "Reported by Codex activity."
+        }
+        : undefined;
+    }).filter((file): file is ChangedFile => Boolean(file))
+    : state.snapshot.changedFiles;
+  const changedFiles = candidateFiles.filter((file) => {
+    if (file.featureId && !visibleFeatureIds.has(file.featureId)) {
+      return false;
+    }
+    return !file.moduleId || visibleModuleIds.has(file.moduleId);
+  });
+  const changedFilesByFeature = new Map<string, ChangedFile[]>();
+  for (const file of changedFiles) {
+    if (!file.featureId || !visibleFeatureIds.has(file.featureId)) {
+      continue;
+    }
+    const files = changedFilesByFeature.get(file.featureId) ?? [];
+    files.push(file);
+    changedFilesByFeature.set(file.featureId, files);
+  }
+
+  const changedFeatureIds = new Set(changedFilesByFeature.keys());
+  const validActivityFeature = currentActivity.activeFeature && visibleFeatureIds.has(currentActivity.activeFeature)
+    ? currentActivity.activeFeature
+    : undefined;
+  const dominantChangedFeature = pickDominantChangedFeature(changedFilesByFeature);
+  const impactedFeature = state.snapshot.impactedFeatures.find((feature) => visibleFeatureIds.has(feature.featureId))?.featureId;
+  const activeFeatureId = validActivityFeature ?? dominantChangedFeature ?? impactedFeature;
+  const seedFeatureIds = new Set<string>();
+  if (activeFeatureId) {
+    seedFeatureIds.add(activeFeatureId);
+  }
+  for (const featureId of changedFeatureIds) {
+    seedFeatureIds.add(featureId);
+  }
+
+  return {
+    activeFeatureId,
+    seedFeatureIds,
+    changedFeatureIds,
+    changedFiles,
+    changedFilesByFeature,
+    intent: currentActivity.currentIntent,
+    stale: currentActivity.diagnostics.includes(RETAINED_CODEX_CONTEXT_DIAGNOSTIC)
+  };
+}
+
+function pickDominantChangedFeature(changedFilesByFeature: ReadonlyMap<string, ChangedFile[]>): string | undefined {
+  return [...changedFilesByFeature.entries()]
+    .sort((left, right) => {
+      const riskDelta = highestChangedFileRiskScore(right[1]) - highestChangedFileRiskScore(left[1]);
+      return riskDelta || right[1].length - left[1].length || left[0].localeCompare(right[0]);
+    })[0]?.[0];
+}
+
+function highestChangedFileRiskScore(files: ChangedFile[]): number {
+  return Math.max(0, ...files.map((file) => riskOrder(file.riskLevel)));
+}
+
+function emphasisForCodexFeature(
+  featureId: string,
+  context: CodexWorkContext,
+  displayFeatureIds: ReadonlySet<string>
+): GraphNodeEmphasis | undefined {
+  if (context.stale && context.seedFeatureIds.has(featureId)) {
+    return "stale";
+  }
+  if (context.activeFeatureId === featureId) {
+    return "active";
+  }
+  if (context.changedFeatureIds.has(featureId)) {
+    return "changed";
+  }
+  return displayFeatureIds.has(featureId) ? "neighbor" : undefined;
+}
+
+function codexFeatureBadges(
+  feature: FeatureBlock,
+  changedFiles: ChangedFile[],
+  context: CodexWorkContext
+): string[] {
+  const badges: string[] = [feature.riskLevel];
+  if (context.activeFeatureId === feature.id) {
+    badges.push(context.stale ? "last detected" : "active");
+  }
+  if (changedFiles.length > 0) {
+    badges.push(`${changedFiles.length} changed`);
+  }
+  if (context.changedFeatureIds.has(feature.id) && context.activeFeatureId !== feature.id) {
+    badges.push("changed");
+  }
+  return badges;
+}
+
+function addChangedFileExpansionNodes(
+  nodes: GraphViewNode[],
+  edges: GraphViewEdge[],
+  feature: FeatureBlock,
+  changedFiles: ChangedFile[],
+  featureExpansionKey: string
+): void {
+  const featureNodeId = featureNodeIdFor(feature.id);
+  const groupId = `changed-files:${feature.id}`;
+  const groupExpansionKey = `changed-files:${feature.id}`;
+  nodes.push({
+    id: groupId,
+    label: "Changed Files",
+    detail: `${changedFiles.length} changed file${changedFiles.length === 1 ? "" : "s"} in ${feature.label}`,
+    kind: "summary",
+    width: 280,
+    height: 112,
+    riskLevel: highestRisk(changedFiles.map((file) => file.riskLevel)),
+    changedFileCount: changedFiles.length,
+    badges: ["files"],
+    expansionKey: groupExpansionKey,
+    expansionParentKey: featureExpansionKey,
+    expansionLevel: 1,
+    defaultVisible: false
+  });
+  edges.push(edge("contains", featureNodeId, groupId, "contains", "feature", "medium"));
+
+  const shownFiles = changedFiles
+    .sort((left, right) => riskOrder(right.riskLevel) - riskOrder(left.riskLevel) || left.path.localeCompare(right.path))
+    .slice(0, MAX_EXPANDED_DETAIL_NODES);
+  for (const file of shownFiles) {
+    const fileNodeId = fileNodeIdFor(file.path);
+    nodes.push({
+      id: fileNodeId,
+      label: file.path.split("/").at(-1) ?? file.path,
+      detail: `${file.status}: ${file.reason}`,
+      kind: "file",
+      width: 300,
+      height: 118,
+      riskLevel: file.riskLevel,
+      changedFileCount: 1,
+      badges: [file.status, file.riskLevel],
+      primaryPaths: [file.path],
+      openPath: file.path,
+      expansionParentKey: groupExpansionKey,
+      expansionLevel: 2,
+      defaultVisible: false
+    });
+    edges.push(edge("contains", groupId, fileNodeId, "contains", "feature", "medium"));
+  }
+
+  const hiddenCount = changedFiles.length - shownFiles.length;
+  if (hiddenCount > 0) {
+    const moreId = `${groupId}:more`;
+    nodes.push({
+      id: moreId,
+      label: `+${hiddenCount} more changed files`,
+      detail: "Additional changed files are hidden to keep the expanded graph readable.",
+      kind: "summary",
+      width: 260,
+      height: 104,
+      role: "Hidden file summary",
+      changedFileCount: hiddenCount,
+      badges: ["more"],
+      expansionParentKey: groupExpansionKey,
+      expansionLevel: 2,
+      defaultVisible: false
+    });
+    edges.push(edge("contains", groupId, moreId, "contains", "feature", "low"));
+  }
 }
 
 function buildBaselineDiffGraph(state: DashboardState): GraphViewModel {
@@ -614,7 +1057,8 @@ function moduleToNode(moduleNode: ModuleNode): GraphViewNode {
     moduleCount: 1,
     changedFileCount: 0,
     moduleIds: [moduleNode.id],
-    primaryPaths: [moduleNode.path]
+    primaryPaths: [moduleNode.path],
+    openPath: moduleNode.path
   };
 }
 
@@ -708,7 +1152,52 @@ function buildRuntimeRoleSummaryNodes(
     });
 }
 
-function addSemanticArchitectureEdges(edges: GraphViewEdge[], visible: VisibleArchitectureState): void {
+function buildRuntimeRoleDetailNodes(
+  parentExpansionKey: string,
+  summaryNode: GraphViewNode,
+  featureModules: ModuleNode[]
+): GraphViewNode[] {
+  const moduleIds = new Set(summaryNode.moduleIds ?? []);
+  const matchingModules = featureModules
+    .filter((moduleNode) => moduleIds.has(moduleNode.id))
+    .sort((left, right) => riskOrder(right.riskLevel) - riskOrder(left.riskLevel) || left.path.localeCompare(right.path));
+  const shownModules = matchingModules.slice(0, MAX_EXPANDED_DETAIL_NODES);
+  const detailNodes: GraphViewNode[] = shownModules.map((moduleNode) => ({
+    ...moduleToNode(moduleNode),
+    id: `detail:${summaryNode.id}:${moduleNode.id}`,
+    expansionParentKey: parentExpansionKey,
+    expansionLevel: 2,
+    defaultVisible: false,
+    openPath: moduleNode.path
+  }));
+  const hiddenCount = matchingModules.length - shownModules.length;
+  if (hiddenCount > 0) {
+    detailNodes.push({
+      id: `detail:${summaryNode.id}:more`,
+      label: `+${hiddenCount} more modules`,
+      detail: "Additional modules are hidden to keep the expanded graph readable.",
+      kind: "summary",
+      width: 260,
+      height: 104,
+      role: "Hidden module summary",
+      moduleCount: hiddenCount,
+      badges: ["more"],
+      expansionParentKey: parentExpansionKey,
+      expansionLevel: 2,
+      defaultVisible: false
+    });
+  }
+  return detailNodes;
+}
+
+interface SemanticFeatureEdgeSpec {
+  sourceFeatureId: string;
+  targetFeatureId: string;
+  semanticKind: GraphSemanticEdgeKind;
+  confidence: "low" | "medium" | "high";
+}
+
+function getSemanticArchitectureEdgeSpecs(visible: VisibleArchitectureState): SemanticFeatureEdgeSpec[] {
   const featureIds = new Set(visible.featureBlocks.map((feature) => feature.id));
   const semanticEdges: Array<[string, string, GraphSemanticEdgeKind, "low" | "medium" | "high"]> = [
     ["gui-layer", "task-runner", "calls", "high"],
@@ -729,11 +1218,26 @@ function addSemanticArchitectureEdges(edges: GraphViewEdge[], visible: VisibleAr
     }
   }
 
-  for (const [sourceFeature, targetFeature, semanticKind, confidence] of semanticEdges) {
-    if (!featureIds.has(sourceFeature) || !featureIds.has(targetFeature) || sourceFeature === targetFeature) {
-      continue;
-    }
-    edges.push(edge(semanticKind, featureNodeIdFor(sourceFeature), featureNodeIdFor(targetFeature), semanticKind, "feature", confidence));
+  return semanticEdges
+    .filter(([sourceFeatureId, targetFeatureId]) => featureIds.has(sourceFeatureId) && featureIds.has(targetFeatureId) && sourceFeatureId !== targetFeatureId)
+    .map(([sourceFeatureId, targetFeatureId, semanticKind, confidence]) => ({
+      sourceFeatureId,
+      targetFeatureId,
+      semanticKind,
+      confidence
+    }));
+}
+
+function addSemanticArchitectureEdges(edges: GraphViewEdge[], visible: VisibleArchitectureState): void {
+  for (const spec of getSemanticArchitectureEdgeSpecs(visible)) {
+    edges.push(edge(
+      spec.semanticKind,
+      featureNodeIdFor(spec.sourceFeatureId),
+      featureNodeIdFor(spec.targetFeatureId),
+      spec.semanticKind,
+      "feature",
+      spec.confidence
+    ));
   }
 }
 
@@ -1007,8 +1511,28 @@ function featureNodeIdFor(featureId: string): string {
   return `feature:${featureId}`;
 }
 
+function fileNodeIdFor(path: string): string {
+  return `file:${slug(path)}`;
+}
+
+function expansionKeyForFeature(featureId: string): string {
+  return `feature:${featureId}`;
+}
+
+function expansionKeyForRole(featureId: string, role: string): string {
+  return `feature:${featureId}:role:${slug(role)}`;
+}
+
 function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function normalizePath(path: string): string {
+  return path.replaceAll("\\", "/").toLowerCase();
+}
+
+function entityKindRank(kind: ArchitectureFactEntity["kind"]): number {
+  return ["package", "launch", "node", "topic", "service", "action", "config", "module"].indexOf(kind);
 }
 
 function layerRank(layer: string): number {

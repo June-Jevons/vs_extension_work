@@ -141,6 +141,9 @@ export class DashboardPanel {
       case "configure":
         await vscode.commands.executeCommand(commandIds.configure);
         return;
+      case "openWorkspaceFile":
+        await vscode.commands.executeCommand(commandIds.openWorkspaceFile, message.path);
+        return;
       case "focusTimeline":
         await vscode.commands.executeCommand(commandIds.focusTimeline);
         return;

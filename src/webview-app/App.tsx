@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DashboardMode,
   DashboardState,
@@ -16,6 +16,19 @@ type ViewStatus =
   | { type: "loading"; message: string }
   | { type: "error"; message: string }
   | { type: "ready"; state: DashboardState };
+
+interface GraphExpansionControls {
+  expandedKeysFor(viewId: string): readonly string[];
+  toggleExpansion(viewId: string, key: string): void;
+}
+
+interface RetainedCodexContext {
+  codexActivity: DashboardState["snapshot"]["codexActivity"];
+  changedFiles: DashboardState["snapshot"]["changedFiles"];
+  impactedFeatures: DashboardState["snapshot"]["impactedFeatures"];
+}
+
+const retainedCodexContextDiagnostic = "Last detected Codex context retained in this webview session.";
 
 declare global {
   interface Window {
@@ -101,6 +114,8 @@ export function App(): React.JSX.Element {
 }
 
 function Dashboard({ state }: { state: DashboardState }): React.JSX.Element {
+  const [expandedGraphKeysByView, setExpandedGraphKeysByView] = useState<Record<string, string[]>>({});
+  const [retainedCodexContext, setRetainedCodexContext] = useState<RetainedCodexContext | undefined>();
   const visibleFeatureBlocks = useMemo(
     () => filterArchitectureVisibleFeatureBlocks(state.snapshot.featureBlocks, state.snapshot.modules),
     [state.snapshot.featureBlocks, state.snapshot.modules]
@@ -109,6 +124,38 @@ function Dashboard({ state }: { state: DashboardState }): React.JSX.Element {
     () => visibleFeatureBlocks.find((feature) => feature.id === state.selectedFeatureId) ?? visibleFeatureBlocks[0],
     [state.selectedFeatureId, visibleFeatureBlocks]
   );
+  const expandedKeysFor = useCallback(
+    (viewId: string) => expandedGraphKeysByView[viewId] ?? [],
+    [expandedGraphKeysByView]
+  );
+  const toggleExpansion = useCallback((viewId: string, key: string) => {
+    setExpandedGraphKeysByView((current) => {
+      const keys = new Set(current[viewId] ?? []);
+      if (keys.has(key)) {
+        keys.delete(key);
+      } else {
+        keys.add(key);
+      }
+      return {
+        ...current,
+        [viewId]: [...keys].sort()
+      };
+    });
+  }, []);
+  const graphExpansion = useMemo<GraphExpansionControls>(
+    () => ({
+      expandedKeysFor,
+      toggleExpansion
+    }),
+    [expandedKeysFor, toggleExpansion]
+  );
+
+  useEffect(() => {
+    const currentContext = extractCurrentCodexContext(state);
+    if (currentContext) {
+      setRetainedCodexContext(currentContext);
+    }
+  }, [state]);
 
   return (
     <main className="dashboard-shell" data-testid="dashboard-root">
@@ -157,10 +204,10 @@ function Dashboard({ state }: { state: DashboardState }): React.JSX.Element {
       </section>
 
       <section className="mode-panel">
-        {state.mode === "liveChanges" && <LiveChanges state={state} />}
-        {state.mode === "wholeArchitecture" && <WholeArchitecture state={state} />}
-        {state.mode === "featureFocus" && <FeatureFocus state={state} activeFeatureId={activeFeature?.id} />}
-        {state.mode === "diffSinceBaseline" && <DiffSinceBaseline state={state} />}
+        {state.mode === "liveChanges" && <LiveChanges state={state} graphExpansion={graphExpansion} retainedCodexContext={retainedCodexContext} />}
+        {state.mode === "wholeArchitecture" && <WholeArchitecture state={state} graphExpansion={graphExpansion} />}
+        {state.mode === "featureFocus" && <FeatureFocus state={state} activeFeatureId={activeFeature?.id} graphExpansion={graphExpansion} />}
+        {state.mode === "diffSinceBaseline" && <DiffSinceBaseline state={state} graphExpansion={graphExpansion} />}
       </section>
 
       <details className="diagnostics" data-testid="workspace-diagnostics-panel">
@@ -189,15 +236,80 @@ function Dashboard({ state }: { state: DashboardState }): React.JSX.Element {
   );
 }
 
-function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
+function extractCurrentCodexContext(state: DashboardState): RetainedCodexContext | undefined {
+  const visibleFeatureIds = new Set(filterArchitectureVisibleFeatureBlocks(state.snapshot.featureBlocks, state.snapshot.modules).map((feature) => feature.id));
+  const activeFeatureValid = Boolean(state.snapshot.codexActivity.activeFeature && visibleFeatureIds.has(state.snapshot.codexActivity.activeFeature));
+  const hasCurrentChangeContext = activeFeatureValid
+    || state.snapshot.codexActivity.modifiedFiles.length > 0
+    || state.snapshot.changedFiles.length > 0
+    || state.snapshot.impactedFeatures.length > 0;
+  if (!hasCurrentChangeContext) {
+    return undefined;
+  }
+
+  return {
+    codexActivity: state.snapshot.codexActivity,
+    changedFiles: state.snapshot.changedFiles,
+    impactedFeatures: state.snapshot.impactedFeatures
+  };
+}
+
+function stateWithRetainedCodexContext(
+  state: DashboardState,
+  retainedCodexContext: RetainedCodexContext | undefined
+): DashboardState {
+  if (extractCurrentCodexContext(state) || !retainedCodexContext) {
+    return state;
+  }
+
+  return {
+    ...state,
+    snapshot: {
+      ...state.snapshot,
+      codexActivity: {
+        ...retainedCodexContext.codexActivity,
+        currentIntent: retainedCodexContext.codexActivity.currentIntent || "Last detected Codex activity.",
+        diagnostics: [...new Set([
+          ...retainedCodexContext.codexActivity.diagnostics,
+          retainedCodexContextDiagnostic
+        ])]
+      },
+      changedFiles: retainedCodexContext.changedFiles,
+      impactedFeatures: retainedCodexContext.impactedFeatures
+    }
+  };
+}
+
+function graphProps(viewId: string, graphExpansion: GraphExpansionControls): Pick<React.ComponentProps<typeof GraphCanvas>, "expandedKeys" | "onToggleExpansion"> {
+  return {
+    expandedKeys: graphExpansion.expandedKeysFor(viewId),
+    onToggleExpansion: (key: string) => graphExpansion.toggleExpansion(viewId, key)
+  };
+}
+
+function LiveChanges({
+  state,
+  graphExpansion,
+  retainedCodexContext
+}: {
+  state: DashboardState;
+  graphExpansion: GraphExpansionControls;
+  retainedCodexContext?: RetainedCodexContext;
+}): React.JSX.Element {
   const risksByLevel = new Map(state.snapshot.risks.map((risk) => [risk.level, risk]));
-  const impactView = useMemo(() => buildGraphViewForTarget(state, "liveImpact"), [state]);
+  const impactState = useMemo(
+    () => stateWithRetainedCodexContext(state, retainedCodexContext),
+    [retainedCodexContext, state]
+  );
+  const impactView = useMemo(() => buildGraphViewForTarget(impactState, "liveImpact"), [impactState]);
   const dependencyView = useMemo(() => buildGraphViewForTarget(state, "liveDependency"), [state]);
   const activeFeature = state.snapshot.featureBlocks.find((feature) => feature.id === state.snapshot.codexActivity.activeFeature);
   const modifiedRuntimeRelations = getModifiedRuntimeRelations(state);
+  const [dependencyDetailsOpen, setDependencyDetailsOpen] = useState(false);
 
   return (
     <div className="two-column">
+      <GraphCanvas testId="architecture-impact-graph" view={impactView} {...graphProps(impactView.id, graphExpansion)} />
       <section data-testid="current-change-area">
         <h2>Current Change Area</h2>
         <p>{state.snapshot.impactedFeatures.length} impacted features from {state.snapshot.changedFiles.length} changed files.</p>
@@ -267,8 +379,16 @@ function LiveChanges({ state }: { state: DashboardState }): React.JSX.Element {
         <h2>Before/After Structure</h2>
         <p>{state.baselineDiff ? `${state.baselineDiff.changedModules.length} modules and ${state.baselineDiff.addedEdges.length + state.baselineDiff.removedEdges.length} edges changed since baseline.` : "Capture a baseline to compare structure before and after this Codex activity."}</p>
       </section>
-      <GraphCanvas testId="architecture-impact-graph" view={impactView} />
-      <GraphCanvas testId="dependency-graph" view={dependencyView} />
+      <details
+        className="advanced-graph-details"
+        data-testid="dependency-details"
+        onToggle={(event) => setDependencyDetailsOpen(event.currentTarget.open)}
+      >
+        <summary>Dependency Details</summary>
+        {dependencyDetailsOpen ? (
+          <GraphCanvas testId="dependency-graph" view={dependencyView} {...graphProps(dependencyView.id, graphExpansion)} />
+        ) : null}
+      </details>
     </div>
   );
 }
@@ -291,7 +411,7 @@ function getModifiedRuntimeRelations(state: DashboardState): DashboardState["sna
   });
 }
 
-function WholeArchitecture({ state }: { state: DashboardState }): React.JSX.Element {
+function WholeArchitecture({ state, graphExpansion }: { state: DashboardState; graphExpansion: GraphExpansionControls }): React.JSX.Element {
   const graphView = useMemo(() => buildGraphViewForTarget(state, "wholeArchitecture"), [state]);
   const visibleFeatureBlocks = useMemo(
     () => filterArchitectureVisibleFeatureBlocks(state.snapshot.featureBlocks, state.snapshot.modules),
@@ -301,7 +421,7 @@ function WholeArchitecture({ state }: { state: DashboardState }): React.JSX.Elem
 
   return (
     <div className="two-column">
-      <GraphCanvas testId="whole-architecture-diagram" view={graphView} />
+      <GraphCanvas testId="whole-architecture-diagram" view={graphView} {...graphProps(graphView.id, graphExpansion)} />
       <section data-testid="architecture-overview-cards">
         <h2>Feature Blocks</h2>
         <ul className="plain-list">
@@ -318,7 +438,7 @@ function WholeArchitecture({ state }: { state: DashboardState }): React.JSX.Elem
   );
 }
 
-function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activeFeatureId?: string }): React.JSX.Element {
+function FeatureFocus({ state, activeFeatureId, graphExpansion }: { state: DashboardState; activeFeatureId?: string; graphExpansion: GraphExpansionControls }): React.JSX.Element {
   const focusView = useMemo(
     () => buildFeatureFocusViewModel(state, activeFeatureId),
     [activeFeatureId, state]
@@ -349,7 +469,7 @@ function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activ
         <p>{activeFeature?.description ?? "No runtime feature is selected."}</p>
         <p>{focusView.runtimeModules.length} runtime modules across {focusView.roleGroups.length} inferred role groups.</p>
       </section>
-      <GraphCanvas testId="internal-dependency-graph" view={graphView} />
+      <GraphCanvas testId="internal-dependency-graph" view={graphView} {...graphProps(graphView.id, graphExpansion)} />
       <section data-testid="module-composition-panel">
         <h2>Role Groups</h2>
         <ul className="plain-list">
@@ -379,7 +499,7 @@ function FeatureFocus({ state, activeFeatureId }: { state: DashboardState; activ
   );
 }
 
-function DiffSinceBaseline({ state }: { state: DashboardState }): React.JSX.Element {
+function DiffSinceBaseline({ state, graphExpansion }: { state: DashboardState; graphExpansion: GraphExpansionControls }): React.JSX.Element {
   const graphView = useMemo(() => buildGraphViewForTarget(state, "baselineDiff"), [state]);
 
   return (
@@ -392,7 +512,7 @@ function DiffSinceBaseline({ state }: { state: DashboardState }): React.JSX.Elem
         <h2>Summary</h2>
         <p>{state.baselineDiff?.changedModules.length ?? 0} changed modules since baseline.</p>
       </section>
-      <GraphCanvas testId="before-after-graph" view={graphView} />
+      <GraphCanvas testId="before-after-graph" view={graphView} {...graphProps(graphView.id, graphExpansion)} />
       <section data-testid="top-changes-table">
         <h2>Top Changes</h2>
         <ul className="plain-list">

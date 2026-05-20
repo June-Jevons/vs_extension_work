@@ -8,6 +8,8 @@ const graphSource = fs.readFileSync(path.join(repositoryRoot, "src", "webview", 
 
 assert.ok(scannerSource.includes("XMLParser"), "Architecture fact scanner should parse package.xml with fast-xml-parser");
 assert.ok(scannerSource.includes("YAML.parse"), "Architecture fact scanner should parse YAML config files");
+assert.ok(scannerSource.includes("isTestRelatedArchitectureEntity"), "Architecture fact scanner should filter test-related ROS facts before diagnostics");
+assert.ok(scannerSource.includes("pytest"), "Architecture fact scanner should recognize pytest/generic test fact names");
 assert.ok(scannerSource.includes("DeclareLaunchArgument"), "Architecture fact scanner should inspect launch arguments");
 assert.ok(scannerSource.includes("Node"), "Architecture fact scanner should inspect launch Node declarations");
 for (const pattern of ["create_publisher", "create_subscription", "create_service", "create_client", "ActionClient", "ActionServer"]) {

@@ -32,6 +32,7 @@ for (const mode of dashboardModes) {
 }
 
 const whole = buildGraphViewForTarget(state, "wholeArchitecture");
+const defaultWholeNodes = getDefaultVisibleNodes(whole);
 assert.ok(whole.nodes.some((node) => node.kind === "system"), "Whole Architecture graph should contain a system node");
 assert.ok(whole.nodes.some((node) => node.kind === "layer"), "Whole Architecture graph should contain layer nodes");
 assert.ok(whole.nodes.some((node) => node.kind === "feature"), "Whole Architecture graph should contain feature nodes");
@@ -40,7 +41,49 @@ assert.ok(whole.nodes.some((node) => node.kind === "topic"), "Whole Architecture
 assert.ok(whole.nodes.some((node) => node.kind === "config"), "Whole Architecture graph should contain config facts");
 assert.ok(whole.edges.some((edge) => edge.semanticKind === "launches"), "Whole Architecture graph should render launches relations");
 assert.ok(whole.edges.some((edge) => edge.semanticKind === "usesConfig"), "Whole Architecture graph should render config usage relations");
+assert.ok(defaultWholeNodes.some((node) => node.label === "ROS Runtime Facts"), "Whole Architecture default graph should show a collapsed ROS summary");
+assert.ok(defaultWholeNodes.every((node) => !["launch", "topic", "module"].includes(node.kind)), "Whole Architecture default graph should hide detail nodes until expanded");
+assert.ok(whole.nodes.some((node) => node.expansionParentKey && node.expansionLevel === 1), "Whole Architecture should include first-level expansion nodes");
+assert.ok(whole.nodes.some((node) => node.expansionParentKey && node.expansionLevel === 2), "Whole Architecture should include second-level expansion nodes");
 assert.ok(!whole.nodes.some((node) => node.label === "Tests"), "Whole Architecture graph should not contain a Tests feature block");
+
+const liveImpact = buildGraphViewForTarget(state, "liveImpact");
+assert.strictEqual(liveImpact.title, "Codex Work Impact");
+assert.ok(liveImpact.nodes.some((node) => node.emphasis === "active" || node.emphasis === "changed"), "Codex Work Impact should emphasize active or changed features");
+assert.ok(getDefaultVisibleNodes(liveImpact).every((node) => node.kind !== "file" && node.expansionLevel !== 2), "Codex Work Impact should hide changed files and detail nodes by default");
+
+const testFactState: DashboardState = {
+  ...state,
+  snapshot: {
+    ...state.snapshot,
+    architectureFacts: {
+      entities: [
+        ...state.snapshot.architectureFacts.entities,
+        {
+          id: "node:pytest_probe",
+          kind: "node",
+          label: "pytest_probe",
+          detail: "ROS test helper",
+          path: "src/ros/tests/test_probe.py",
+          confidence: "high"
+        }
+      ],
+      relations: [
+        ...state.snapshot.architectureFacts.relations,
+        {
+          id: "publishes:node:pytest_probe->topic:/test",
+          source: "node:pytest_probe",
+          target: "topic:/joint_states",
+          kind: "publishes",
+          confidence: "high",
+          evidence: "pytest test node publishes /test"
+        }
+      ],
+      diagnostics: []
+    }
+  }
+};
+assert.ok(!JSON.stringify(buildGraphViewForTarget(testFactState, "wholeArchitecture")).toLowerCase().includes("pytest"), "Graph view should defensively filter test-related ROS facts");
 
 const motionFocus = buildGraphViewForTarget(state, "featureInternal", "motion-planning");
 assert.ok(motionFocus.nodes.some((node) => /Motion Builder/i.test(node.label)), "Motion focus graph should contain a motion builder step");
@@ -81,6 +124,10 @@ function assertGraphContract(view: GraphViewModel, label: string): void {
     assert.ok(nodeIds.has(edge.source), `${label} edge ${edge.id} should reference an existing source`);
     assert.ok(nodeIds.has(edge.target), `${label} edge ${edge.id} should reference an existing target`);
   }
+}
+
+function getDefaultVisibleNodes(view: GraphViewModel): GraphViewModel["nodes"] {
+  return view.nodes.filter((node) => !node.expansionParentKey && node.defaultVisible !== false);
 }
 
 function createMixedRuntimeAndTestState(): DashboardState {

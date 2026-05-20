@@ -28,6 +28,7 @@ const requiredReactTestIds = [
   "risk-impact",
   "architecture-impact-graph",
   "changed-files-table",
+  "dependency-details",
   "dependency-graph",
   "suggested-validation",
   "validation-status-row",
@@ -85,6 +86,8 @@ assert.ok(isWebviewToExtensionMessage({ type: "ready" }));
 assert.ok(isWebviewToExtensionMessage({ type: "setMode", mode: "featureFocus" }));
 assert.ok(isWebviewToExtensionMessage({ type: "selectFeature", featureId: "motion-planning" }));
 assert.ok(isWebviewToExtensionMessage({ type: "configure" }));
+assert.ok(isWebviewToExtensionMessage({ type: "openWorkspaceFile", path: "src/motion/box_motion.py" }));
+assert.ok(!isWebviewToExtensionMessage({ type: "openWorkspaceFile", path: "" }));
 assert.ok(isWebviewToExtensionMessage({ type: "focusTimeline", available: false }));
 assert.ok(isWebviewToExtensionMessage({ type: "selectionState", active: true }));
 assert.ok(!isWebviewToExtensionMessage({ type: "setMode", mode: "scanner" }));
