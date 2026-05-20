@@ -7,6 +7,9 @@
 artifacts/**
 coverage/**
 node_modules/**
+!node_modules/fast-xml-parser/**
+!node_modules/strnum/**
+!node_modules/yaml/**
 out-scripts/**
 out-test/**
 out/**/*.map

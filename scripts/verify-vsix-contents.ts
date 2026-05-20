@@ -40,6 +40,9 @@ export function verifyVsixContents(vsixPath: string): VerificationResult[] {
     check("webview Vite manifest", entrySet.has(manifestPath), "Vite manifest must be packaged"),
     check("webview JavaScript asset", Boolean(scriptFile && entrySet.has(scriptFile)), scriptFile ?? "manifest entry file is missing"),
     check("webview CSS asset", styleFiles.length === 0 || styleFiles.every((file) => entrySet.has(file)), styleFiles.join(", ") || "no CSS emitted"),
+    check("runtime dependency fast-xml-parser", entrySet.has("extension/node_modules/fast-xml-parser/package.json"), "fast-xml-parser must be packaged for extension-host ROS XML parsing"),
+    check("runtime dependency strnum", entrySet.has("extension/node_modules/strnum/package.json"), "strnum must be packaged as fast-xml-parser runtime dependency"),
+    check("runtime dependency yaml", entrySet.has("extension/node_modules/yaml/package.json"), "yaml must be packaged for extension-host ROS config parsing"),
     check("Activity Bar icon", entrySet.has("extension/media/codicon-map.svg"), "Activity Bar icon must be packaged")
   ];
 }

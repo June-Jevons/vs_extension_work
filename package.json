@@ -171,7 +171,8 @@
     "validate": "npm run compile && npm run test:unit && npm run visual:render && npm run visual:test",
     "validate:full": "npm run doctor:ubuntu && npm run validate && npm run test:vscode && npm run package && npm run verify:vsix",
     "package": "npm run compile && vsce package",
-    "verify:vsix": "tsc -p ./tsconfig.scripts.json && node ./out-scripts/scripts/verify-vsix-contents.js"
+    "verify:vsix": "tsc -p ./tsconfig.scripts.json && node ./out-scripts/scripts/verify-vsix-contents.js",
+    "install:local": "npm run package && npm run verify:vsix && code --install-extension live-architecture-map-0.0.1.vsix --force"
   },
   "devDependencies": {
     "@playwright/test": "1.60.0",
